@@ -606,12 +606,13 @@ class Bubble(QWidget):
         bw, bh = self.width(), self.height()        # 窗口尺寸（含四周留白）
         bodyW = self.maxw
         bodyH = self._body_h or (bh - 2 * m)
-        # 候选位先按「气泡本体」算，再整体减掉留白换算成窗口位置
+        # 候选位先按「气泡本体」算，再整体减掉留白换算成窗口位置。
+        # 外移量里带上 m：窗口外框（含箭头所在的留白区）才不会压到桌宠身上。
         cands = (
-            (g.right() - 20, g.top() - bodyH - 12),            # 桌宠右上
-            (g.left() - bodyW + 20, g.top() - bodyH - 12),     # 桌宠左上
-            (g.right() + 6, g.top() + 8),                      # 桌宠右侧
-            (g.left() - bodyW - 6, g.top() + 8),               # 桌宠左侧
+            (g.right() - 20, g.top() - bodyH - 8 - m),         # 桌宠右上
+            (g.left() - bodyW + 20, g.top() - bodyH - 8 - m),  # 桌宠左上
+            (g.right() + m, g.top() + 8),                      # 桌宠右侧
+            (g.left() - bodyW - m, g.top() + 8),               # 桌宠左侧
         )
         cands = [(x - m, y - m) for x, y in cands]
         blockers = self._avoid_rects()
