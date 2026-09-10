@@ -230,6 +230,7 @@ class Pet(QWidget):
         "pic_fox": ("立绘 · 狐耳少女", "pic_fox", "fox"),
         "pic_panda": ("立绘 · 熊猫娘", "pic_panda", "panda"),
         "pic_robot": ("立绘 · 红色机甲", "pic_robot", "robot"),
+        "pic_plush": ("立绘 · 毛绒小兽", "pic_plush", "cat"),
     }
     _img_cache = {}
 
@@ -289,6 +290,7 @@ class Pet(QWidget):
         "pic_fox": (239, 159, 39),
         "pic_panda": (168, 194, 224),
         "pic_robot": (93, 202, 165),
+        "pic_plush": (72, 190, 168),      # 取它围巾的青色
     }
 
     def set_talking(self, v):
