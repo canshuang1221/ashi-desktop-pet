@@ -1,4 +1,12 @@
-# 桌面宠物 · 阿拾
+<div align="center">
+
+🌐 **简体中文** | [English](README.en.md)
+
+</div>
+
+---
+
+# 阿拾 · 桌面宠物
 
 一只住在 Windows 桌面上的小宠物。它会**看你屏幕**，跟你一起吐槽、一起看剧、一起打游戏——不是那种等你下指令的助手。
 
@@ -66,3 +74,11 @@ pyinstaller --noconfirm --onefile --windowed --name JarvisLite \
 ```
 
 `config.example.json` 是可以直接提交的模板，真正的 `config.json`（含 API Key）已在 `.gitignore` 里。
+
+---
+
+<div align="center">
+
+🌐 **简体中文** | [English](README.en.md)
+
+</div>

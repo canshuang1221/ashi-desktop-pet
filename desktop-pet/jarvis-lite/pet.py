@@ -350,9 +350,12 @@ class Pet(QWidget):
             self._blink_at = now + gap + (now % 3)
         blinking = now < self._blink_until
 
-        # 每隔几秒重新声明一次「置顶」：从游戏/全屏程序切回来之后，
-        # 系统有时会把置顶标记忘掉，桌宠就被别的窗口盖住了。
-        if now - self._top_at > 5:
+        # 重新声明「置顶」。为什么频率这么高（0.3 秒一次）：
+        # 实测英雄联盟的"全屏"其实是一个 TOPMOST 的普通窗口（不是独占全屏），
+        # 它自己也在反复抢最上层，于是变成一场 z 序拉锯战 —— 谁最后调用置顶谁在上面。
+        # 原来 5 秒一次抢不过它，桌宠本体一直被压在下面（只有刚弹出的气泡能露脸）。
+        # SetWindowPos 开销极小，带上 SWP_NOACTIVATE 也不会抢焦点，所以放心高频。
+        if now - self._top_at > 0.3:
             self._top_at = now
             force_topmost(self)
         gr, gg, gb = self.GLOW_RGB.get(self._skin, self.GLOW_RGB["robot"])
@@ -897,8 +900,11 @@ class Bubble(QWidget):
         self._place()
         self.show()
         self.raise_()
-        # 说话时也重新声明一次置顶，免得气泡被压在游戏或全屏窗口下面
+        # 说话时重新声明置顶，免得气泡被压在游戏或全屏窗口下面；
+        # 顺便把桌宠本体也顶一次（实测本体比气泡更容易被游戏的置顶挤下去）
         force_topmost(self)
+        if pet is not None:
+            force_topmost(pet)
         self.update()
         self._ms = ms
         self._timer.start(ms)
