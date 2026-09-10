@@ -568,6 +568,8 @@ class App:
             self._dbglog("skip assistant-tone: %s" % text[:30])
             return
         self._said.append(text)
+        # 到这里才记进当天记忆：能进来的都是真正会弹出来的话
+        self.brain.note_reply(text, kind="auto", tag=getattr(self, "_pending_tag", ""))
         self.bubble.say(self.pet, text, image=image, clickable=True)
         self.pet.set_talking(True)
         QTimer.singleShot(3500, lambda: self.pet.set_talking(False))
@@ -672,7 +674,9 @@ class App:
                    "不是屏幕里的内容。）" % self.pet.label(self.pet._skin))
         # fresh=True：感知提示词本身已带「最近说过的话」，不必再捎 12 条历史，
         # 否则每 30 秒都要把上一轮的 500 字提示词再发一遍，纯烧 token
-        w = SenseWorker(self.brain, prompt, shot, record=True, kind="auto", fresh=True)
+        # record=False：不要在模型返回时就写记忆。被拦掉的句子（问号/助手口气）
+        # 也走这条路，写了就等于历史里出现它从没说过的话。发出后再由 _say_final 记。
+        w = SenseWorker(self.brain, prompt, shot, record=False, kind="auto", fresh=True)
         w.got.connect(self._on_sense)
         self._worker = w
         w.start()
@@ -686,6 +690,7 @@ class App:
             return
         # 先把活动标签摘出来记账（这是「今日足迹」的数据来源，与用户说不说话无关）
         tag, body = self._split_activity(text)
+        self._pending_tag = tag          # 留给 _say_final 写记忆时带上
         self._note_activity(tag)
         text = body
         if not text or "[SKIP]" in text:
@@ -714,7 +719,7 @@ class App:
             .replace("{date}", now.strftime("%Y-%m-%d"))
         )
         prompt = config.render(prompt, self.cfg)
-        w = SenseWorker(self.brain, self._vary(prompt), None, record=True,
+        w = SenseWorker(self.brain, self._vary(prompt), None, record=False,
                         kind="auto", fresh=True)
         w.got.connect(self._on_tick)
         self._tick_worker = w
@@ -722,6 +727,8 @@ class App:
 
     def _on_tick(self, text, image):
         self.ticking = False
+        # 定时搭话没有活动标签，清掉上一条感知留下的，免得给它错标
+        self._pending_tag = ""
         if not text or text.startswith("[ERROR]") or "[SKIP]" in text:
             return
         text = text.strip()

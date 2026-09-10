@@ -1,6 +1,7 @@
 import html
 import json
 import os
+import re
 from datetime import datetime
 
 from PySide6.QtCore import Qt
@@ -69,9 +70,12 @@ class History(QDialog):
             return
         self.combo.addItems(days)
 
-    @staticmethod
-    def _bubble(ts, text):
+    def _bubble(self, ts, text):
         """微信式气泡：昵称+时间灰字在上方，白色气泡宽度随内容自适应。
+
+        注意是实例方法（要取 self._name 当署名）——早先写成 @staticmethod，
+        改名字时往里加 self._name 就直接 NameError，而 Qt 会把槽函数里的
+        异常吞掉，表现就是这个窗口永远空白。
 
         QTextDocument 不支持 inline-block/圆角，用定宽 table 模拟；
         文本宽度按像素估算（中文全宽、ASCII 半宽），超宽自动封顶换行。
@@ -95,6 +99,20 @@ class History(QDialog):
             '<span style="color:#2B2B2B;">%s</span></td></tr></table>'
             % (html.escape(self._name), html.escape(ts), w, body))
 
+    # 活动标签是给「今日足迹」记账用的，不该显示在历史里。
+    # 只在标签确实在允许列表里时才剥，免得把正文里的方括号误吃掉。
+    _TAGS = ("看视频", "看直播", "听音乐", "写代码", "剪视频", "修图", "打游戏",
+             "看文档", "写文档", "聊天", "逛网页", "买东西", "学习", "摸鱼",
+             "发呆", "其它")
+
+    @classmethod
+    def _strip_tag(cls, text):
+        m = re.match(r"^\s*[\[【]\s*(?:活动\s*[:：]\s*)?([^\]】]+?)\s*[\]】]\s*(.*)$",
+                     text or "", re.S)
+        if m and m.group(1).strip() in cls._TAGS:
+            return m.group(2).strip()
+        return (text or "").strip()
+
     def _show(self, day):
         path = os.path.join(config.MEMORY_DIR, day + ".json")
         if not os.path.exists(path):
@@ -109,7 +127,7 @@ class History(QDialog):
         for m in reversed(data):  # 最近的在最上面
             if m.get("role") != "assistant":
                 continue
-            text = (m.get("content") or "").strip()
+            text = self._strip_tag(m.get("content") or "")
             if not text or text.startswith("[ERROR]"):
                 continue
             bubbles.append(self._bubble(m.get("ts", "--:--"), text))

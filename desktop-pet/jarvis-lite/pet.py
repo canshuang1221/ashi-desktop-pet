@@ -31,6 +31,28 @@ def edge_visible(scale=1.0):
     return max(34, int((Pet.W - BODY_R + PEEK) * scale))
 
 
+def force_topmost(win):
+    """把这个窗口重新压到最上层，且不抢焦点。
+
+    为什么要主动做一次：Qt 的 WindowStaysOnTopHint 只是创建时的标记，
+    从游戏/全屏程序切回桌面之后，系统有时会把它忘掉，表现为桌宠突然
+    被别的窗口盖住、不再浮在上面。用 SetWindowPos(HWND_TOPMOST) 重新声明一遍，
+    带上 SWP_NOACTIVATE 所以不会把焦点从你正在用的程序抢走。
+
+    注意：**全屏独占（exclusive fullscreen）的游戏盖不住** —— 这是 Windows 的
+    限制，任何普通窗口都做不到，只有 DirectX 注入式 overlay 才行。
+    LNG 这类游戏在设置里改成「无边框窗口」就能正常浮在上面。
+    """
+    try:
+        import ctypes
+        SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x0001, 0x0002, 0x0010
+        ctypes.windll.user32.SetWindowPos(
+            int(win.winId()), -1, 0, 0, 0, 0,
+            SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
+    except Exception:
+        pass
+
+
 class Pet(QWidget):
     """桌面常驻桌宠：可拖动、置顶、呼吸浮动、会眨眼。"""
 
@@ -49,6 +71,7 @@ class Pet(QWidget):
         self.drag = None
         self._blink_at = time.time() + 3
         self._blink_until = 0
+        self._top_at = 0.0        # 上次主动置顶的时刻（见 force_topmost）
         self._s = float(cfg["pet"].get("scale", 1.0))
         self._skin = cfg["pet"].get("skin", "cat")
         self._dock_side = None    # None / "left" / "right" / "top"
@@ -326,6 +349,12 @@ class Pet(QWidget):
             self._blink_until = now + hold
             self._blink_at = now + gap + (now % 3)
         blinking = now < self._blink_until
+
+        # 每隔几秒重新声明一次「置顶」：从游戏/全屏程序切回来之后，
+        # 系统有时会把置顶标记忘掉，桌宠就被别的窗口盖住了。
+        if now - self._top_at > 5:
+            self._top_at = now
+            force_topmost(self)
         gr, gg, gb = self.GLOW_RGB.get(self._skin, self.GLOW_RGB["robot"])
         glow_c = QColor(gr, gg, gb)
 
@@ -868,6 +897,8 @@ class Bubble(QWidget):
         self._place()
         self.show()
         self.raise_()
+        # 说话时也重新声明一次置顶，免得气泡被压在游戏或全屏窗口下面
+        force_topmost(self)
         self.update()
         self._ms = ms
         self._timer.start(ms)

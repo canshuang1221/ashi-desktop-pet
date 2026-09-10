@@ -277,6 +277,24 @@ class Brain:
         with open(self._today_file(), "w", encoding="utf-8") as f:
             json.dump(self.history[-60:], f, ensure_ascii=False, indent=2)
 
+    def note_reply(self, text, kind="auto", tag=""):
+        """把「真正发出去的那句话」记进当天记忆。
+
+        以前是在模型一返回就记（stream 的 record 分支），结果被拦掉的句子
+        ——带问号、助手口气、劝休息的那些——也一并写进了历史。
+        用户在「它都说了什么」里会看到它根本没说过的话。所以改成确认发出后再记。
+        """
+        text = (text or "").strip()
+        if not text:
+            return
+        now = datetime.now().strftime("%H:%M:%S")
+        content = ("[%s] %s" % (tag, text)) if tag else text
+        self.history.append({"role": "user", "kind": kind,
+                             "content": _short_user(kind, ""), "ts": now})
+        self.history.append({"role": "assistant", "kind": kind,
+                             "content": content, "ts": now})
+        self._save_history()
+
     def clear_history(self):
         self.history = []
         self._save_history()
