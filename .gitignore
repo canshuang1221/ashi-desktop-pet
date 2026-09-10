@@ -46,3 +46,20 @@ out/
 *.tmp
 *.temp
 *.cache
+
+# ===== 小贾桌宠：本地运行数据与密钥（严禁提交）=====
+# config.json 里有 API Key；log/ui_log 里有屏幕观察记录，都是私密的
+config.json
+*config.json
+!config.example.json
+log.txt
+ui_log.txt
+last_shot.jpg
+memory/
+notes/
+
+# ===== 打包中间产物 =====
+*.spec
+
+# ===== 智能体工作记忆（含本地注意事项，不随代码公开）=====
+.workbuddy/
