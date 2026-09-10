@@ -1,4 +1,5 @@
 import base64
+import html
 import os
 
 import config
@@ -39,7 +40,8 @@ class ChatWindow(QWidget):
     def __init__(self, brain, cfg, bubble, pet):
         super().__init__()
         self.brain, self.cfg, self.bubble, self.pet = brain, cfg, bubble, pet
-        self.md = ""
+        self.msgs = []          # [(who, text, is_notice)]，微信式气泡按序渲染
+        self._pt = 12
         self.worker = None
         self.note_worker = None
         self.drag = None
@@ -48,6 +50,7 @@ class ChatWindow(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.resize(420, 560)
         self._build()
+        self._render()   # 先渲染空态提示文案
 
     def _build(self):
         self.setStyleSheet(
@@ -82,8 +85,9 @@ class ChatWindow(QWidget):
 
         self.view.setOpenLinks(False)
         self.view.anchorClicked.connect(QDesktopServices.openUrl)
+        # 微信观感：浅灰聊天底 + 白色/绿色气泡浮在上面
         self.view.setStyleSheet(
-            "QTextBrowser{background:#F7F9FC;border:1px solid #D3D1C7;"
+            "QTextBrowser{background:#F2F3F5;border:1px solid #D3D1C7;"
             "border-radius:8px;padding:8px;font-size:13px;}"
         )
 
@@ -117,14 +121,16 @@ class ChatWindow(QWidget):
     def apply_font(self, pt):
         """设置里调字号后即时应用到输入框和消息区。"""
         pt = max(9, min(18, int(pt)))
+        self._pt = pt
         self.view.setStyleSheet(
-            "QTextBrowser{background:#F7F9FC;border:1px solid #D3D1C7;"
+            "QTextBrowser{background:#F2F3F5;border:1px solid #D3D1C7;"
             "border-radius:8px;padding:8px;font-size:%dpx;}" % pt
         )
         self.input.setStyleSheet(
             "QPlainTextEdit{background:#F7F9FC;border:1px solid #D3D1C7;"
             "border-radius:8px;padding:6px;font-size:%dpx;}" % pt
         )
+        self._render()   # 气泡里的字号也要跟着变
 
     # ---------- 跟随桌宠 ----------
     def follow(self):
@@ -153,25 +159,25 @@ class ChatWindow(QWidget):
         import base64
 
         # 全新会话：清掉之前所有内容
-        self.md = ""
-        self.view.clear()
+        self.msgs = []
         self.tip.setText("")
         self._ctx_image = image_b64
         self._ctx_text = bubble_text
 
-        # 截图落盘：模型上下文用它；面板里放可点击链接
-        # （注：offscreen/部分环境下对 QTextBrowser insertHtml/insertImage 会挂起，
-        #  因此所有内容统一走 setMarkdown 渲染路径）
+        # 截图落盘：模型上下文用它；面板里放一条可点击的居中提示
         if image_b64:
             try:
                 shot_path = os.path.join(config.BASE_DIR, "last_shot.jpg")
                 with open(shot_path, "wb") as f:
                     f.write(base64.b64decode(image_b64.split(",", 1)[1]))
-                self._append_md(
-                    "📎", "[本轮截图（点击查看）](file:///%s)" % shot_path.replace("\\", "/"))
+                self._append(
+                    "notice",
+                    '<a href="file:///%s" style="color:#6E6E6E;text-decoration:none;">'
+                    '📎 本轮截图（点击查看）</a>' % shot_path.replace("\\", "/"),
+                    notice=True)
             except Exception:
                 pass
-        self._append_md("小贾", bubble_text)
+        self._append("小贾", bubble_text)
         self._cursor_end()
         self.input.setFocus()
 
@@ -198,20 +204,61 @@ class ChatWindow(QWidget):
         return super().eventFilter(obj, e)
 
     # ---------- 对话 ----------
-    def _append_md(self, who, text):
-        self.md += "**%s**  \n%s\n\n" % (who, text)
-        self.view.setMarkdown(self.md)
+    # 微信式气泡：小贾在左（白底）、你在右（绿底）、系统提示居中灰底。
+    # QTextDocument 不支持 inline-block 和圆角，所以用定宽 table 模拟气泡，
+    # 宽度按像素估算（中文全宽、ASCII 半宽），超宽自动封顶换行。
+    def _bubble_html(self, who, text):
+        pt = self._pt
+        if who == "notice":
+            return ('<div align="center" style="margin:9px 0 2px 0;">'
+                    '<span style="background:#DCDEE1;color:#6E6E6E;font-size:%dpx;">'
+                    '&nbsp;%s&nbsp;</span></div>' % (max(10, pt - 2), text))
+        me = (who == "你")
+        max_line, line = 0, 0
+        for ch in text:
+            if ch == "\n":
+                max_line, line = max(max_line, line), 0
+            else:
+                line += pt if ord(ch) > 0x2E80 else pt * 0.55
+        w = max(64, min(300, int(max(max_line, line)) + 26))
+        align = "right" if me else "left"
+        body = html.escape(text).replace("\n", "<br>") or "&nbsp;"
+        return (
+            '<div align="%s" style="color:#9AA3AC;font-size:11px;'
+            'margin:9px 4px 2px 4px;">%s</div>'
+            '<div align="%s"><table width="%d" cellspacing="0" cellpadding="0"><tr>'
+            '<td bgcolor="%s" style="padding:7px 9px;">'
+            '<span style="color:#2B2B2B;font-size:%dpx;">%s</span>'
+            '</td></tr></table></div>'
+            % (align, html.escape(who), align, w,
+               "#95EC69" if me else "#FFFFFF", pt, body)
+        )
+
+    def _render(self):
+        if not self.msgs:
+            self.view.setHtml(
+                '<div style="font-family:Microsoft YaHei;color:#9AA3AC;">'
+                '还没有对话。点桌宠的气泡，或直接在下面输入。</div>')
+            return
+        self.view.setHtml(
+            '<div style="font-family:Microsoft YaHei;">%s</div>'
+            % "".join(self._bubble_html(w, t) for w, t, _n in self.msgs))
         sb = self.view.verticalScrollBar()
         sb.setValue(sb.maximum())
 
-    def _stream_start(self, who, text):
-        self._append_md(who, text)
-        self._cursor_end()
+    def _append(self, who, text, notice=False):
+        self.msgs.append((who, text, notice))
+        self._render()
+
+    def clear(self):
+        """清空对话内容（托盘「清空记忆」调用）。"""
+        self.msgs = []
+        self._render()
 
     def _cursor_end(self):
-        c = self.view.textCursor()
-        c.movePosition(QTextCursor.MoveOperation.End)
-        self.view.setTextCursor(c)
+        """滚到底部。"""
+        sb = self.view.verticalScrollBar()
+        sb.setValue(sb.maximum())
 
     def send(self):
         if not self.brain.ready:
@@ -222,8 +269,8 @@ class ChatWindow(QWidget):
             return
         self.input.clear()
         self.tip.setText("")
-        self._append_md("你", text)
-        self._append_md("小贾", "")
+        self._append("你", text)
+        self._append("小贾", "")
         self._cursor_end()
         self.pet.set_talking(True)
         # 来自气泡的会话：第一条消息自动带上截图和气泡那句话，且不掺历史
@@ -249,18 +296,22 @@ class ChatWindow(QWidget):
     # 且截屏范围/自身遮挡问题多。保留 brain.grab_screen 供感知使用。
 
     def _on_delta(self, d):
-        self._cursor_end()
-        self.view.insertPlainText(d)
+        # 流式增量续写到最后一个气泡里，整块重渲染（内容短，开销可忽略）
+        if self.msgs:
+            who, text, notice = self.msgs[-1]
+            self.msgs[-1] = (who, text + d, notice)
+        self._render()
 
     def _on_fail(self, msg):
-        self._cursor_end()
-        self.view.insertPlainText("（出错：" + msg + "）")
+        if self.msgs:
+            who, text, notice = self.msgs[-1]
+            self.msgs[-1] = (who, text + "（出错：" + msg + "）", notice)
+        self._render()
         self.tip.setText("接口出错")
         self._finish()
 
     def _on_done(self):
-        plain = self.view.toPlainText().split("小贾")[-1].strip()
-        self.md += "\n"
+        plain = self.msgs[-1][1].strip() if self.msgs else ""
         self._finish()
         self.bubble.say(self.pet, plain[:60] + ("…" if len(plain) > 60 else ""), 8000)
 

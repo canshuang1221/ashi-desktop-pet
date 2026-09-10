@@ -9,6 +9,21 @@ import requests
 import config
 
 
+def _short_user(kind, text):
+    """记忆里不要存自动触发的长提示词。
+
+    感知提示词约 500 字，绝大部分是固定模板 + 「最近说过的话」列表。
+    存进历史后每条都要占上下文（_build 会带最近 12 条），既费 token
+    又会让模型把指令当成用户说过的话。真正有价值的是小贾自己的回复，
+    所以自动触发的只留一个短标记。
+    """
+    if kind == "chat":
+        return text or "(空)"
+    if kind == "auto":
+        return "(自动看了屏幕)"
+    return "(%s)" % kind
+
+
 class Brain:
     """OpenAI 兼容接口客户端，含视觉能力与本地记忆。"""
 
@@ -71,14 +86,22 @@ class Brain:
             "max_tokens": self.cfg["api"]["max_tokens"],
             "stream": True,
         }
+        MAX_RETRY = 2
         try:
-            r = requests.post(self._endpoint(), headers=self._headers(), json=body, stream=True, timeout=90)
+            r = requests.post(self._endpoint(), headers=self._headers(), json=body,
+                              stream=True, timeout=(10, 90))
         except Exception as e:
-            yield "[ERROR]连不上接口：" + str(e)
+            # 网络抖动/超时：退避后重试，别把一次偶发失败直接甩给用户
+            if _retry < MAX_RETRY:
+                time.sleep(1.5 * (_retry + 1))
+                yield from self.stream(user_text, image_b64, _retry + 1,
+                                       record, fresh, kind)
+                return
+            yield "[ERROR]连不上接口（已重试 %d 次）：%s" % (_retry, e)
             return
         if r.status_code != 200:
-            # 免费 API 常有并发/速率限制，退避重试而不是直接报错
-            if r.status_code == 429 and _retry < 2:
+            # 429 限流 / 5xx 网关抖动：退避重试；4xx 参数错误重试也没用
+            if (r.status_code == 429 or r.status_code >= 500) and _retry < MAX_RETRY:
                 time.sleep(2 * (_retry + 1))
                 yield from self.stream(user_text, image_b64, _retry + 1,
                                        record, fresh, kind)
@@ -121,13 +144,19 @@ class Brain:
                 yield full
 
         if not full:
+            # 流被中途掐断也会走到这里，先重试再报错
+            if _retry < MAX_RETRY:
+                time.sleep(1.5 * (_retry + 1))
+                yield from self.stream(user_text, image_b64, _retry + 1,
+                                       record, fresh, kind)
+                return
             yield "[ERROR]接口没有返回内容。可能原因：该接口不支持流式输出或不支持图片输入（模型 %s）。" % model
             return
 
         if full and record:
             now = datetime.now().strftime("%H:%M:%S")
             self.history.append({"role": "user", "kind": kind,
-                                 "content": user_text or "(看了屏幕)", "ts": now})
+                                 "content": _short_user(kind, user_text), "ts": now})
             self.history.append({"role": "assistant", "kind": kind,
                                  "content": full, "ts": now})
             self._save_history()
@@ -166,12 +195,17 @@ class Brain:
         return path
 
 
-def grab_screen(scale=0.6, quality=72, as_jpeg=True, foreground=True):
+def grab_screen(scale=0.85, quality=82, as_jpeg=True, foreground=True):
     """截屏返回 base64。默认优先截「前台窗口」而不是全屏：
     全屏压到一半分辨率时，小字全糊，模型只能看出大布局，说话自然没代入感；
     聚焦当前窗口后画面内容密度高得多，同样的字节数能看清他在用什么、干什么。
 
     前台窗口不在主屏/取不到时自动退回全屏。
+
+    注意 scale/quality 的取舍：实测 0.6 + quality 72 时，代码框里的小字会被
+    模型读错（jarvis-lite 读成 jarvís-lite、docking 读成 dorking）。
+    现在默认 0.85 + 82，文字可读性明显变好，代价是截图体积约翻倍。
+    可在设置面板里调。scope="screen" 时绕过前台窗口裁剪，截整个屏幕。
     """
     from PySide6.QtCore import QBuffer, QByteArray, QIODevice, Qt
     from PySide6.QtWidgets import QApplication

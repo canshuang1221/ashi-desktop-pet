@@ -197,9 +197,29 @@ class Settings(QDialog):
         self.idle = QCheckBox("键鼠空闲时自动休息（不再自言自语）")
         self.idle.setChecked(self.cfg["idle"]["enabled"])
 
+        # 截图范围：活跃窗口画面密度高、看得清；整屏能看到全局但小字会变糊
+        self.shot_scope = QComboBox()
+        self.shot_scope.addItem("只截当前活跃窗口（推荐，看得清）", "window")
+        self.shot_scope.addItem("整个屏幕", "screen")
+        _i = self.shot_scope.findData(self.cfg["sense"].get("shot_scope", "window"))
+        self.shot_scope.setCurrentIndex(max(0, _i))
+
+        # 截图清晰度：调大能看清代码小字，但截图体积（以及 token）会变大
+        self.shot_scale = QSpinBox()
+        self.shot_scale.setRange(40, 100)
+        self.shot_scale.setSuffix(" %")
+        self.shot_scale.setValue(
+            int(float(self.cfg["sense"].get("shot_scale", 0.85)) * 100))
+        self.shot_quality = QSpinBox()
+        self.shot_quality.setRange(40, 95)
+        self.shot_quality.setValue(int(self.cfg["sense"].get("shot_quality", 82)))
+
         f.addRow("人设", self.persona)
         f.addRow("看屏间隔", self.interval)
         f.addRow("", self.sense)
+        f.addRow("截图范围", self.shot_scope)
+        f.addRow("截图清晰度", self.shot_scale)
+        f.addRow("截图画质", self.shot_quality)
         f.addRow("搭话间隔", self.tick_interval)
         f.addRow("", self.tick)
         f.addRow("空闲阈值", self.idle_thr)
@@ -366,6 +386,9 @@ class Settings(QDialog):
         self.cfg["persona"] = self.persona.toPlainText().strip()
         self.cfg["sense"]["enabled"] = self.sense.isChecked()
         self.cfg["sense"]["interval_sec"] = self.interval.value()
+        self.cfg["sense"]["shot_scope"] = self.shot_scope.currentData() or "window"
+        self.cfg["sense"]["shot_scale"] = self.shot_scale.value() / 100.0
+        self.cfg["sense"]["shot_quality"] = self.shot_quality.value()
         self.cfg["tick"]["enabled"] = self.tick.isChecked()
         self.cfg["tick"]["interval_sec"] = self.tick_interval.value()
         self.cfg["idle"]["enabled"] = self.idle.isChecked()

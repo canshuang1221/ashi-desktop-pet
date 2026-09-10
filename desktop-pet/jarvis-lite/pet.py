@@ -287,31 +287,34 @@ class Pet(QWidget):
     def _draw_cat(self, p, cx, cy, t, blinking):
         sway = math.sin(t * 2.6)
 
-        # 尾巴：从身侧伸出，末端摆动
+        # 尾巴：起点埋进身体里（被身体盖住），再从右下侧弯出来翘起。
+        # 原来起点就贴在身体边缘、弧长只有 20 来像素，看着像身体外面多出一块。
         tail = QPainterPath()
-        tail.moveTo(cx + 34, cy + 30)
-        tail.quadTo(cx + 64, cy + 20 + sway * 5, cx + 50 + sway * 6, cy - 8)
-        p.setPen(QPen(QColor("#E4D9C3"), 12))
+        tail.moveTo(cx + 16, cy + 26)
+        tail.quadTo(cx + 78, cy + 26 + sway * 5, cx + 56 + sway * 6, cy - 26)
+        p.setPen(QPen(QColor("#E4D9C3"), 13))
         p.drawPath(tail)
-        p.setPen(QPen(QColor("#F7F1E3"), 8))
+        p.setPen(QPen(QColor("#F7F1E3"), 9))
         p.drawPath(tail)
 
-        # 耳朵（随呼吸轻动）
-        ear_tip = 2 + math.sin(t * 1.7) * 1.5
+        # 耳朵：基座落在头的轮廓内侧（随后被头盖住），看着才是「长在头上」。
+        # 原来基座正好压在头边缘上，会有悬空的错觉；而且两侧加了 `* side`，
+        # 导致一只耳朵高、一只低，呼吸时左右不对称。
+        ear_lift = math.sin(t * 1.7) * 1.5
         for side in (-1, 1):
+            ex = cx + side * 22
             ear = QPainterPath()
-            ex = cx + side * 26
-            ear.moveTo(ex - 13, cy - 36)
-            ear.lineTo(ex, cy - 62 - ear_tip * side)
-            ear.lineTo(ex + 13, cy - 34)
+            ear.moveTo(ex - 13, cy - 26)
+            ear.lineTo(ex, cy - 66 + ear_lift)
+            ear.lineTo(ex + 13, cy - 24)
             ear.closeSubpath()
             p.setPen(QPen(QColor("#D8CDB8"), 1.2))
             p.setBrush(QColor("#F7F1E3"))
             p.drawPath(ear)
             inner = QPainterPath()
-            inner.moveTo(ex - 6, cy - 38)
-            inner.lineTo(ex, cy - 53 - ear_tip * side)
-            inner.lineTo(ex + 6, cy - 37)
+            inner.moveTo(ex - 6, cy - 30)
+            inner.lineTo(ex, cy - 56 + ear_lift)
+            inner.lineTo(ex + 6, cy - 29)
             inner.closeSubpath()
             p.setPen(Qt.NoPen)
             p.setBrush(QColor("#F6B9C4"))

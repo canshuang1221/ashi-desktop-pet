@@ -80,15 +80,17 @@ class HotkeyFilter(QAbstractNativeEventFilter):
 class SenseWorker(QThread):
     got = Signal(str, object)  # (回复文本, 产生回复时的截图或 None)
 
-    def __init__(self, brain, prompt, image, record=True, kind="auto"):
+    def __init__(self, brain, prompt, image, record=True, kind="auto", fresh=False):
         super().__init__()
         self.brain, self.prompt, self.image = brain, prompt, image
         self.record = record
         self.kind = kind
+        self.fresh = fresh
 
     def run(self):
         self.got.emit(self.brain.once(self.prompt, self.image,
-                                      record=self.record, kind=self.kind),
+                                      record=self.record, kind=self.kind,
+                                      fresh=self.fresh),
                       self.image)
 
 
@@ -132,7 +134,7 @@ class App:
         self.pet.moved.connect(self._on_pet_moved)
         # 气泡要避让对话面板，别压在面板上
         self.bubble.avoid(self.chat)
-        self._said = deque(maxlen=6)  # 最近主动说过的话，用来防重复
+        self._said = deque(maxlen=12)  # 最近主动说过的话（存完整文本，用于相似度去重）
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.do_sense)
@@ -362,8 +364,7 @@ class App:
 
     def clear_memory(self):
         self.brain.clear_history()
-        self.chat.md = ""
-        self.chat.view.clear()
+        self.chat.clear()
         self.bubble.say(self.pet, "记忆清空了", 3000)
 
     def open_settings(self):
@@ -382,11 +383,43 @@ class App:
         self._sync_timer()
         self.bubble.say(self.pet, "设置已保存", 2500)
 
+    # 实测：30 条主动发言里有 15 条都在说「歇会儿/起来活动/眼睛累了」，
+    # 光靠提示词里的「不要重复」约束根本压不住，所以这里做两层硬拦截。
+    REST_WORDS = ("歇", "休息", "睡", "眼睛", "活动", "走动", "走到", "站起来",
+                  "喝水", "放松", "疲劳", "脖子", "腰", "伸展", "闭眼", "喘口气", "缓缓")
+
+    @staticmethod
+    def _bigrams(s):
+        s = "".join(ch for ch in s if ch.strip())
+        return {s[i:i + 2] for i in range(max(0, len(s) - 1))}
+
+    def _too_similar(self, text):
+        """和最近说过的话太像就直接不发——防止连着弹同义句。"""
+        g = self._bigrams(text)
+        if not g:
+            return False
+        for old in self._said:
+            o = self._bigrams(old)
+            if not o:
+                continue
+            if len(g & o) / float(len(g | o)) >= 0.34:
+                return True
+        return False
+
+    def _rest_pressure(self):
+        """最近 5 句里有 ≥2 句在劝休息，就说明该换话题了。"""
+        recent = list(self._said)[-5:]
+        return sum(1 for s in recent if any(w in s for w in self.REST_WORDS)) >= 2
+
     def _vary(self, prompt):
         """注入「最近说过的话 + 角度/句式/长度三维随机」，让主动搭话不重样。"""
         if self._said:
             prompt += ("\n你最近说过这些，不要重复类似内容和开头方式："
                        + "；".join(self._said))
+        if self._rest_pressure():
+            prompt += ("\n（注意：你最近已经反复劝过休息/活动/喝水了。这一次"
+                       "绝对不许再提休息、喝水、起来走动、眼睛累、放松这类话题，"
+                       "必须换一个完全不同的角度来说。）")
         prompt += (
             "\n这次的表达要求：角度=%s；句式=%s；长度=%s。三者都严格执行，"
             "且开头用词、句式结构必须和上面列过的每一句都不一样。"
@@ -427,12 +460,18 @@ class App:
         if not self.brain.ready or self.sensing or self.ticking:
             return
         self.sensing = True
-        scale = self.cfg["sense"].get("shot_scale", 0.6)
-        shot = brain_mod.grab_screen(scale=scale)
-        prompt = self._vary(self.cfg["sense"]["prompt"])
+        sense = self.cfg["sense"]
+        scale = sense.get("shot_scale", 0.85)
+        quality = sense.get("shot_quality", 82)
+        scope = sense.get("shot_scope", "window")
+        shot = brain_mod.grab_screen(scale=scale, quality=quality,
+                                     foreground=(scope != "screen"))
+        prompt = self._vary(sense["prompt"])
         # 告诉它自己现在是什么形态，截图里的那个卡通形象就是本尊，别当成屏幕内容提问
         prompt += "\n（你现在的形象是「%s」，屏幕画面里的这个卡通形象就是你自己。）" % self.pet._skin
-        w = SenseWorker(self.brain, prompt, shot, record=True, kind="auto")
+        # fresh=True：感知提示词本身已带「最近说过的话」，不必再捎 12 条历史，
+        # 否则每 30 秒都要把上一轮的 500 字提示词再发一遍，纯烧 token
+        w = SenseWorker(self.brain, prompt, shot, record=True, kind="auto", fresh=True)
         w.got.connect(self._on_sense)
         self._worker = w
         w.start()
@@ -442,7 +481,10 @@ class App:
         if not text or text.startswith("[ERROR]") or "[SKIP]" in text:
             return
         text = text.strip()
-        self._said.append(text[:40])
+        if self._too_similar(text):
+            self._dbglog("skip repeat: %s" % text[:30])
+            return
+        self._said.append(text)
         self.bubble.say(self.pet, text, image=image, clickable=True)
         self.pet.set_talking(True)
         QTimer.singleShot(3500, lambda: self.pet.set_talking(False))
@@ -462,7 +504,8 @@ class App:
             .replace("{time}", now.strftime("%H:%M"))
             .replace("{date}", now.strftime("%Y-%m-%d"))
         )
-        w = SenseWorker(self.brain, self._vary(prompt), None, record=True, kind="auto")
+        w = SenseWorker(self.brain, self._vary(prompt), None, record=True,
+                        kind="auto", fresh=True)
         w.got.connect(self._on_tick)
         self._tick_worker = w
         w.start()
@@ -472,7 +515,10 @@ class App:
         if not text or text.startswith("[ERROR]") or "[SKIP]" in text:
             return
         text = text.strip()
-        self._said.append(text[:40])
+        if self._too_similar(text):
+            self._dbglog("skip repeat: %s" % text[:30])
+            return
+        self._said.append(text)
         self.bubble.say(self.pet, text, image=None, clickable=True)
         self.pet.set_talking(True)
         QTimer.singleShot(3500, lambda: self.pet.set_talking(False))

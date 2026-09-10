@@ -33,7 +33,9 @@ DEFAULT = {
     "sense": {
         "enabled": False,
         "interval_sec": 30,
-        "shot_scale": 0.6,
+        "shot_scale": 0.85,      # 截图缩放：太小会让模型读错屏幕上的小字
+        "shot_quality": 82,      # JPEG 质量
+        "shot_scope": "window",  # window=只截当前活跃窗口 / screen=整个屏幕
         "prompt": (
             "你在看用户电脑上正在使用的窗口。像一个懂行的朋友在旁边看着他干活："
             "先用半句点出你观察到他在做什么（要具体、有代入感），再自然地接一句关心、"
