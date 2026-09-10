@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 )
 
 import config
+import theme
 
 
 class History(QDialog):
@@ -17,19 +18,25 @@ class History(QDialog):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("它都说了什么")
-        self.resize(600, 560)
-        self.setStyleSheet("QDialog{background:#FFFFFF;}")
+        self.resize(600, 580)
+        self.setStyleSheet(theme.app_qss())
         self._build()
         self._load_dates()
 
     def _build(self):
         root = QVBoxLayout(self)
+        root.setContentsMargins(16, 14, 16, 14)
+        root.setSpacing(10)
         row = QHBoxLayout()
-        row.addWidget(QLabel("日期"))
+        lab = QLabel("日期")
+        lab.setStyleSheet("color:%s;" % theme.TEXT_SUB)
+        row.addWidget(lab)
         self.combo = QComboBox()
         self.combo.currentTextChanged.connect(self._show)
         row.addWidget(self.combo, 1)
         open_dir = QPushButton("打开文件夹")
+        open_dir.setObjectName("ghost")
+        open_dir.setCursor(Qt.PointingHandCursor)
         open_dir.clicked.connect(lambda: os.startfile(config.MEMORY_DIR))
         row.addWidget(open_dir)
         root.addLayout(row)
@@ -37,12 +44,16 @@ class History(QDialog):
         self.view = QTextBrowser()
         # 微信式观感：浅灰聊天背景，白色气泡浮在上面
         self.view.setStyleSheet(
-            "QTextBrowser{background:#F2F3F5;border:1px solid #D3D1C7;"
-            "border-radius:8px;padding:8px;font-size:13px;}"
+            "QTextBrowser{background:%s;border:1px solid %s;"
+            "border-radius:%dpx;padding:8px;font-size:13px;}"
+            % (theme.CARD_ALT, theme.BORDER, theme.RADIUS)
         )
         root.addWidget(self.view, 1)
 
         close = QPushButton("关闭")
+        close.setObjectName("primary")
+        close.setMinimumWidth(92)
+        close.setCursor(Qt.PointingHandCursor)
         close.clicked.connect(self.accept)
         root.addWidget(close, alignment=Qt.AlignRight)
 

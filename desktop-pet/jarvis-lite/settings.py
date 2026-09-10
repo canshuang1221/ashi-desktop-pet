@@ -8,6 +8,9 @@ from PySide6.QtWidgets import (
     QTabWidget, QVBoxLayout, QWidget, QLabel,
 )
 
+import pet as pet_mod
+import theme
+
 
 class ModelFetcher(QThread):
     """拉取 /v1/models，填充下拉。"""
@@ -88,8 +91,8 @@ class Settings(QDialog):
         self._orig_scale = float(cfg["pet"].get("scale", 1.0))
         self._orig_ui = dict(cfg.get("ui", {}))
         self.setWindowTitle("设置")
-        self.setFixedWidth(520)
-        self.setStyleSheet("QDialog{background:#FFFFFF;}")
+        self.setFixedWidth(560)
+        self.setStyleSheet(theme.app_qss())
         self._build()
 
     # ---------- 页签 ----------
@@ -97,17 +100,19 @@ class Settings(QDialog):
         tabs = QTabWidget()
         tabs.addTab(self._tab_api(), "API")
         tabs.addTab(self._tab_basic(), "基本设置")
-        tabs.addTab(self._tab_ui(), "UI")
+        tabs.addTab(self._tab_ui(), "外观")
 
         row = QHBoxLayout()
         save = QPushButton("保存")
         cancel = QPushButton("取消")
-        save.setFixedHeight(32)
-        cancel.setFixedHeight(32)
-        save.setStyleSheet(
-            "QPushButton{background:#185FA5;color:white;border:none;border-radius:6px;}"
-            "QPushButton:hover{background:#0C447C;}"
-        )
+        save.setObjectName("primary")
+        save.setMinimumWidth(92)
+        cancel.setObjectName("ghost")
+        cancel.setMinimumWidth(92)
+        save.setFixedHeight(34)
+        cancel.setFixedHeight(34)
+        save.setCursor(Qt.PointingHandCursor)
+        cancel.setCursor(Qt.PointingHandCursor)
         save.clicked.connect(self._save)
         cancel.clicked.connect(self.reject)
         row.addStretch(1)
@@ -115,6 +120,8 @@ class Settings(QDialog):
         row.addWidget(save)
 
         root = QVBoxLayout(self)
+        root.setContentsMargins(16, 14, 16, 14)
+        root.setSpacing(12)
         root.addWidget(tabs)
         root.addLayout(row)
 
@@ -245,8 +252,9 @@ class Settings(QDialog):
         self._scale_live(self.scale.value())
 
         self.skin = QComboBox()
-        for label, val in (("猫猫", "cat"), ("史莱姆", "slime"), ("机器人小贾", "robot")):
-            self.skin.addItem(label, val)
+        # 形象列表直接取自 pet.CHIBI，加新形象只需改 pet.py 一处
+        for val in pet_mod.Pet.SKINS:
+            self.skin.addItem(pet_mod.Pet.CHIBI[val]["label"], val)
         cur = self.cfg["pet"].get("skin", "cat")
         idx = self.skin.findData(cur)
         self.skin.setCurrentIndex(idx if idx >= 0 else 0)
@@ -289,8 +297,9 @@ class Settings(QDialog):
         f.addRow("字号", self.frow)
         f.addRow("气泡宽度", self.brow)
         f.addRow("气泡留存", self.msrow)
-        tip = QLabel("缩放拖动即时生效；取消则还原。字号、气泡宽度和留存时间保存后生效。")
-        tip.setStyleSheet("color:#888780;font-size:11px;")
+        tip = QLabel("缩放拖动即时生效，取消则还原。字号、气泡宽度与留存时间保存后生效；"
+                     "换成别的形象保存后立刻生效。")
+        tip.setStyleSheet("color:%s;font-size:12px;" % theme.TEXT_SUB)
         tip.setWordWrap(True)
         f.addRow("", tip)
         return w

@@ -3,6 +3,7 @@ import html
 import os
 
 import config
+import theme
 
 from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QTextCursor
@@ -11,8 +12,8 @@ from PySide6.QtWidgets import (
     QTextBrowser, QVBoxLayout, QWidget,
 )
 
-BG = "#FFFFFF"
-LINE = "#185FA5"
+BG = theme.BG
+LINE = theme.BRAND
 
 
 class StreamWorker(QThread):

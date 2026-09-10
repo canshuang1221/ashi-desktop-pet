@@ -6,7 +6,7 @@ from datetime import datetime
 import config
 
 from PySide6.QtCore import (
-    QEasingCurve, QPoint, QRect, Qt, QTimer, QVariantAnimation, Signal,
+    QEasingCurve, QPoint, QRect, QRectF, Qt, QTimer, QVariantAnimation, Signal,
 )
 from PySide6.QtGui import (
     QBrush, QColor, QCursor, QFont, QFontMetrics, QLinearGradient,
@@ -216,8 +216,14 @@ class Pet(QWidget):
         self._slide(self._dock_target(self._dock_side))
 
     # ---------- 外观 ----------
-    SKINS = ("cat", "slime", "robot")
-    GLOW_RGB = {"robot": (93, 202, 165), "cat": (246, 185, 196), "slime": (93, 202, 165)}
+    SKINS = ("cat", "shiba", "fox", "bunny", "panda", "tiger", "robot", "slime")
+    GLOW_RGB = {
+        "robot": (93, 202, 165),
+        "cat": (246, 185, 196),
+        "shiba": (239, 159, 39),
+        "panda": (168, 194, 224),
+        "slime": (93, 202, 165),
+    }
 
     def set_talking(self, v):
         self.talking = v
@@ -267,13 +273,8 @@ class Pet(QWidget):
                           (a0 + off) * 16, 70 * 16)
             p.setPen(Qt.NoPen)
 
-        # ---- 按形象分发 ----
-        if self._skin == "cat":
-            self._draw_cat(p, cx, cy, t, blinking)
-        elif self._skin == "slime":
-            self._draw_slime(p, cx, cy, t)
-        else:
-            self._draw_robot(p, cx, cy, t, glow_c, blinking)
+        # ---- 按形象分发（八个形象共用 Q 版绘制核心）----
+        self._draw_chibi(p, cx, cy, t, blinking, self._skin, glow_c)
 
         # ---- 底部状态点（感知中带呼吸光）----
         dot = QColor(EYE) if self.sensing else QColor("#9A998F")
@@ -283,212 +284,394 @@ class Pet(QWidget):
         p.drawEllipse(QPoint(int(cx + 44), 168), 3, 3)
         p.end()
 
-    # ---------- 猫猫 ----------
-    def _draw_cat(self, p, cx, cy, t, blinking):
-        sway = math.sin(t * 2.6)
+    # ---------- 二次元 Q 版形象 ----------
+    # 所有形象共用同一套几何（大头 + 小身体 + 大眼），只换配色与配件，
+    # 这样风格统一、加新形象只需往 CHIBI 里加一条。
+    # 可爱与否主要靠眼睛：眼白 + 渐变虹膜 + 深瞳 + 双高光 + 上眼睑睫毛 + 腮红。
+    CHIBI = {
+        "cat": dict(
+            label="猫娘小贾", skin="#FFF1E6", hair="#F7B98B", hair_sh="#DD9256",
+            eye="#3FA9A0", ear="cat", ear_in="#F9C7D0", acc="ribbon",
+            acc_color="#EF8095", tail="cat", blush="#F6A9B8", ahoge=True,
+        ),
+        "shiba": dict(
+            label="柴犬小贾", skin="#F7C98B", hair="#F0B96C", hair_sh="#D0913F",
+            eye="#4A4238", ear="dog", ear_in="#FCEBDA", acc=None,
+            acc_color=None, tail="curl", blush="#EE9E86", muzzle=True,
+        ),
+        "fox": dict(
+            label="狐娘小贾", skin="#FFF4E9", hair="#F6E7D7", hair_sh="#D9C1A6",
+            eye="#E2A03C", ear="fox", ear_in="#F8D6C4", acc=None,
+            acc_color=None, tail="fox", blush="#F3BEC0", muzzle=True,
+        ),
+        "bunny": dict(
+            label="兔娘小贾", skin="#FFF3F2", hair="#DCD1F5", hair_sh="#B7A6DE",
+            eye="#8E6FD8", ear="bunny", ear_in="#F8CBDB", acc="ribbon",
+            acc_color="#9B8CE0", tail="ball", blush="#F2B6C6", ahoge=False,
+        ),
+        "panda": dict(
+            label="熊猫小贾", skin="#FDFDFD", hair="#3C3C3C", hair_sh="#242424",
+            eye="#2B2B2B", ear="round", ear_in="#5E5E5E", acc=None,
+            acc_color=None, tail="ball", blush="#F3B9C2", panda=True, bare=True,
+        ),
+        "tiger": dict(
+            label="虎娘小贾", skin="#FFDCA6", hair="#F5B65C", hair_sh="#D18F33",
+            eye="#3F8A6E", ear="round", ear_in="#F8D2D8", acc=None,
+            acc_color=None, tail="tiger", blush="#F2A98F", muzzle=True,
+            stripes="#9A6430",
+        ),
+        "robot": dict(
+            label="机娘小贾", skin="#EEF5FF", hair="#A6C9EA", hair_sh="#7BA6D0",
+            eye="#5DCAA5", ear="none", ear_in=None, acc="headset",
+            acc_color="#5DCAA5", tail=None, blush="#C3DAF5", antenna=True,
+        ),
+        "slime": dict(
+            label="果冻小贾", skin="#B9EED9", hair="#7CD9B8", hair_sh="#4BBE97",
+            eye="#2E6E58", ear="none", ear_in=None, acc=None, acc_color=None,
+            tail=None, blush="#F6A9B8", jelly=True, bare=True,
+        ),
+    }
 
-        # 尾巴：起点埋进身体里（被身体盖住），再从右下侧弯出来翘起。
-        # 原来起点就贴在身体边缘、弧长只有 20 来像素，看着像身体外面多出一块。
-        tail = QPainterPath()
-        tail.moveTo(cx + 16, cy + 26)
-        tail.quadTo(cx + 78, cy + 26 + sway * 5, cx + 56 + sway * 6, cy - 26)
-        p.setPen(QPen(QColor("#E4D9C3"), 13))
-        p.drawPath(tail)
-        p.setPen(QPen(QColor("#F7F1E3"), 9))
-        p.drawPath(tail)
+    # ---- 眼睛 ----
+    def _chibi_eyes(self, p, cx, hy, spec, blinking, talking, t, half=13.5):
+        base = QColor(spec["eye"])
+        iris_hi = base.lighter(145).name()
+        iris_lo = base.darker(150).name()
+        for s in (-1, 1):
+            ex, ey = cx + s * half, hy + 7
+            if blinking or talking:
+                # 眨眼 / 说话：上弯的弧，看着像眯眼笑
+                p.setPen(QPen(QColor("#4A4A4A"), 2.4))
+                p.setBrush(Qt.NoBrush)
+                a = QPainterPath()
+                off = 2 if talking else 0
+                a.moveTo(ex - 7.5, ey + off)
+                a.quadTo(ex, ey - 5.5 + off, ex + 7.5, ey + off)
+                p.drawPath(a)
+                p.setPen(Qt.NoPen)
+                continue
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor("#FFFFFF"))
+            p.drawEllipse(QPoint(int(ex), int(ey)), 8, 10)
+            g = QLinearGradient(ex, ey - 9, ex, ey + 10)
+            g.setColorAt(0.0, QColor(iris_hi))
+            g.setColorAt(1.0, QColor(iris_lo))
+            p.setBrush(QBrush(g))
+            p.drawEllipse(QPoint(int(ex), int(ey + 1)), 6.6, 8.2)
+            p.setBrush(QColor("#22303A"))
+            p.drawEllipse(QPoint(int(ex), int(ey + 2)), 3.3, 4.8)
+            p.setBrush(QColor(255, 255, 255, 245))
+            p.drawEllipse(QPoint(int(ex - 2.7), int(ey - 3.8)), 2.7, 3.3)
+            p.setBrush(QColor(255, 255, 255, 150))
+            p.drawEllipse(QPoint(int(ex + 3.2), int(ey + 4.2)), 1.5, 1.7)
+            # 上眼睑（睫毛）与眼角挑线
+            p.setPen(QPen(QColor("#3C3C3C"), 2.0))
+            p.setBrush(Qt.NoBrush)
+            lid = QPainterPath()
+            lid.moveTo(ex - 9, ey - 2)
+            lid.quadTo(ex, ey - 13, ex + 9, ey - 2)
+            p.drawPath(lid)
+            p.drawLine(int(ex + s * 8), int(ey - 4), int(ex + s * 12.5), int(ey - 8))
+            p.setPen(Qt.NoPen)
 
-        # 耳朵：基座落在头的轮廓内侧（随后被头盖住），看着才是「长在头上」。
-        # 原来基座正好压在头边缘上，会有悬空的错觉；而且两侧加了 `* side`，
-        # 导致一只耳朵高、一只低，呼吸时左右不对称。
-        ear_lift = math.sin(t * 1.7) * 1.5
-        for side in (-1, 1):
-            ex = cx + side * 22
+    # ---- 耳朵 ----
+    def _chibi_ears(self, p, cx, hy, r, t, spec, sway):
+        kind = spec["ear"]
+        if not kind or kind == "none":
+            return
+        inner = QColor(spec["ear_in"]) if spec["ear_in"] else QColor(spec["hair_sh"])
+        for s in (-1, 1):
+            ex = cx + s * (r * 0.62)
+            base_y = hy - r * 0.62
+            if kind == "cat":
+                h, w = 30, 15
+                outer = [(ex - w / 2, base_y + 8), (ex + s * 3, base_y - h), (ex + w / 2, base_y + 6)]
+            elif kind == "fox":
+                h, w = 38, 18
+                outer = [(ex - w / 2, base_y + 10), (ex + s * 4, base_y - h), (ex + w / 2 + s * 4, base_y + 6)]
+            elif kind == "dog":
+                h, w = 24, 19
+                outer = [(ex - w / 2, base_y + 4), (ex + s * 2, base_y - h), (ex + w / 2 + s * 5, base_y + 10)]
+            elif kind == "bunny":
+                h, w = 44, 15
+                outer = [(ex - w / 2, base_y + 6), (ex + s * 6, base_y - h), (ex + w / 2 + s * 2, base_y + 4)]
+            else:  # round：熊猫 / 老虎那种圆耳
+                h, w = 17, 17
+                outer = None
+            if outer is None:
+                p.setPen(QPen(QColor(spec["hair_sh"]), 1.2))
+                p.setBrush(QColor(spec["hair"]))
+                p.drawEllipse(QPoint(int(ex), int(base_y - 4)), int(w / 2 + 3), int(h / 2 + 3))
+                p.setPen(Qt.NoPen)
+                p.setBrush(inner)
+                p.drawEllipse(QPoint(int(ex), int(base_y - 3)), int(w / 4 + 2), int(h / 4 + 2))
+                continue
             ear = QPainterPath()
-            ear.moveTo(ex - 13, cy - 26)
-            ear.lineTo(ex, cy - 66 + ear_lift)
-            ear.lineTo(ex + 13, cy - 24)
+            ear.moveTo(*outer[0])
+            ear.quadTo(ex + s * 2, base_y - h - 6, outer[1][0], outer[1][1])
+            ear.quadTo(ex + s * 6, base_y - 4, outer[2][0], outer[2][1])
             ear.closeSubpath()
-            p.setPen(QPen(QColor("#D8CDB8"), 1.2))
-            p.setBrush(QColor("#F7F1E3"))
+            p.setPen(QPen(QColor(spec["hair_sh"]), 1.2))
+            p.setBrush(QColor(spec["hair"]))
             p.drawPath(ear)
-            inner = QPainterPath()
-            inner.moveTo(ex - 6, cy - 30)
-            inner.lineTo(ex, cy - 56 + ear_lift)
-            inner.lineTo(ex + 6, cy - 29)
-            inner.closeSubpath()
+            # 耳朵内侧
+            inner_p = QPainterPath()
+            inner_p.moveTo(ex - w * 0.26, base_y + 2)
+            inner_p.quadTo(ex + s * 1.5, base_y - h * 0.62, ex + w * 0.24, base_y + 1)
+            inner_p.closeSubpath()
             p.setPen(Qt.NoPen)
-            p.setBrush(QColor("#F6B9C4"))
-            p.drawPath(inner)
+            p.setBrush(inner)
+            p.drawPath(inner_p)
 
-        # 身体：奶油白渐变
-        body = QRadialGradient(cx - 16, cy - 30, 6)
-        body.setColorAt(0.0, QColor("#FFFDF6"))
-        body.setColorAt(0.6, QColor("#F7F1E3"))
-        body.setColorAt(1.0, QColor("#E7DCC5"))
-        p.setPen(QPen(QColor("#D8CDB8"), 1.2))
-        p.setBrush(QBrush(body))
-        p.drawEllipse(int(cx - 42), int(cy - 44), 84, 92)
-
-        # 眼睛（大圆黑眼 + 高光）
-        p.setPen(Qt.NoPen)
-        if self.talking:
-            p.setBrush(QColor("#4A4238"))
-            p.drawEllipse(QPoint(int(cx - 15), int(cy - 8)), 6, 7)
-            p.drawEllipse(QPoint(int(cx + 15), int(cy - 8)), 6, 7)
-        elif blinking:
-            p.setPen(QPen(QColor("#4A4238"), 3))
-            p.drawLine(int(cx - 21), int(cy - 8), int(cx - 9), int(cy - 8))
-            p.drawLine(int(cx + 9), int(cy - 8), int(cx + 21), int(cy - 8))
+    # ---- 头发（含刘海与呆毛）----
+    def _chibi_hair(self, p, cx, hy, r, t, spec, sway):
+        # 熊猫 / 果冻这类本来就没头发的形象：只在头顶加一道柔和高光，别盖成头盔
+        if spec.get("bare"):
             p.setPen(Qt.NoPen)
-        else:
-            for ex in (cx - 15, cx + 15):
-                p.setBrush(QColor("#4A4238"))
-                p.drawEllipse(QPoint(int(ex), int(cy - 8)), 6.5, 7.5)
-                p.setBrush(QColor(255, 255, 255))
-                p.drawEllipse(QPoint(int(ex) - 2, int(cy - 11)), 2, 2)
-
-        # 腮红
-        p.setBrush(QColor(246, 185, 196, 150))
-        p.drawEllipse(QPoint(int(cx - 26), int(cy + 2)), 8, 5)
-        p.drawEllipse(QPoint(int(cx + 26), int(cy + 2)), 8, 5)
-
-        # 嘴：ω 形；说话时张嘴
-        p.setPen(QPen(QColor("#8A7A63"), 2))
+            p.setBrush(QColor(255, 255, 255, 95))
+            hl = QPainterPath()
+            hl.moveTo(cx - r * 0.55, hy - r * 0.42)
+            hl.quadTo(cx, hy - r * 0.98, cx + r * 0.55, hy - r * 0.42)
+            hl.quadTo(cx, hy - r * 0.68, cx - r * 0.55, hy - r * 0.42)
+            p.drawPath(hl)
+            return
+        R = r + 2
+        hair = QPainterPath()
+        hair.moveTo(cx - R, hy + 1)
+        hair.arcTo(QRectF(cx - R, hy - R, 2 * R, 2 * R), 180, -180)
+        # 从右到左压出三缕刘海。下缘抬到额头位置——原来压到 hy+2 太低，
+        # 整个头被包住，看着像戴了顶帽子。
+        hair.quadTo(cx + R * 0.62, hy + 15, cx + R * 0.28, hy - 4)
+        hair.quadTo(cx, hy + 17, cx - R * 0.28, hy - 4)
+        hair.quadTo(cx - R * 0.62, hy + 15, cx - R, hy + 1)
+        hair.closeSubpath()
+        p.setPen(QPen(QColor(spec["hair_sh"]), 1.2))
+        p.setBrush(QColor(spec["hair"]))
+        p.drawPath(hair)
+        # 两侧垂发（贴着脸，增加层次）
+        p.setBrush(QColor(spec["hair"]))
+        for s in (-1, 1):
+            side = QPainterPath()
+            x = cx + s * (r - 1)
+            side.moveTo(x, hy - 9)
+            side.quadTo(x + s * 11, hy + 9, x + s * 2, hy + 27)
+            side.quadTo(x - s * 5, hy + 9, x, hy - 9)
+            p.drawPath(side)
+        # 发丝高光
+        p.setPen(QPen(QColor(255, 255, 255, 110), 2.4))
         p.setBrush(Qt.NoBrush)
-        if self.talking:
-            p.setBrush(QColor("#D98A94"))
-            p.drawEllipse(QPoint(int(cx), int(cy + 6)), 6, 4 + math.sin(t * 9) * 1.5)
-        else:
-            m = QPainterPath()
-            m.moveTo(cx - 6, cy + 3)
-            m.quadTo(cx - 3, cy + 7, cx, cy + 3)
-            m.quadTo(cx + 3, cy + 7, cx + 6, cy + 3)
-            p.drawPath(m)
-
-        # 胡须
-        p.setPen(QPen(QColor(180, 168, 140, 170), 1.4))
-        for side in (-1, 1):
-            for dy in (-3, 2):
-                p.drawLine(int(cx + side * 30), int(cy + 2 + dy),
-                           int(cx + side * 44), int(cy + dy))
-
-    # ---------- 史莱姆 ----------
-    def _draw_slime(self, p, cx, cy, t):
-        # 果冻感：宽窄交替的挤压伸展
-        squash = math.sin(t * 2.2)
-        w = 84 + squash * 4
-        h = 92 - squash * 6
-        top = cy - h / 2 + 6
-
-        body = QRadialGradient(cx - 14, cy - 26, 6)
-        body.setColorAt(0.0, QColor(214, 247, 234, 235))
-        body.setColorAt(0.55, QColor(93, 202, 165, 225))
-        body.setColorAt(1.0, QColor(52, 168, 130, 225))
-        p.setPen(QPen(QColor(40, 140, 105, 200), 1.2))
-        p.setBrush(QBrush(body))
-        # 底宽顶圆的果冻形
-        path = QPainterPath()
-        path.moveTo(cx - w / 2, cy + 40)
-        path.cubicTo(cx - w / 2 - 2, cy - h / 2, cx + w / 2 + 2, cy - h / 2, cx + w / 2, cy + 40)
-        path.closeSubpath()
-        p.drawPath(path)
-
-        # 顶部高光 + 底部一滩
-        p.setPen(Qt.NoPen)
-        p.setBrush(QColor(255, 255, 255, 130))
-        p.drawEllipse(QPoint(int(cx - 14), int(top + 14)), 13, 7)
-        p.setBrush(QColor(93, 202, 165, 70))
-        p.drawEllipse(QPoint(int(cx), int(cy + 46)), int(w / 2 + 6), 6)
-
-        # 眼睛：黑豆眼 + 高光；说话时眯成弧
-        if self.talking:
-            p.setBrush(QColor("#2E4A42"))
-            mw = 4 + abs(math.sin(t * 9)) * 2
-            p.drawEllipse(QPoint(int(cx - 14), int(cy - 6)), 6, mw)
-            p.drawEllipse(QPoint(int(cx + 14), int(cy - 6)), 6, mw)
-        else:
-            for ex in (cx - 14, cx + 14):
-                p.setBrush(QColor("#2E4A42"))
-                p.drawEllipse(QPoint(int(ex), int(cy - 6)), 6, 9)
-                p.setBrush(QColor(255, 255, 255))
-                p.drawEllipse(QPoint(int(ex) - 2, int(cy - 10)), 2, 2)
-        # 小嘴
-        p.setPen(QPen(QColor("#2E4A42"), 2))
-        p.setBrush(Qt.NoBrush)
-        if self.talking:
-            p.setBrush(QColor("#2E4A42"))
-            p.drawEllipse(QPoint(int(cx), int(cy + 10)), 5, 3 + abs(math.sin(t * 9)) * 2)
-        else:
-            m = QPainterPath()
-            m.moveTo(cx - 5, cy + 9)
-            m.quadTo(cx, cy + 13, cx + 5, cy + 9)
-            p.drawPath(m)
-            p.setPen(Qt.NoPen)
-
-    # ---------- 机器人（原版）----------
-    def _draw_robot(self, p, cx, cy, t, glow_c, blinking):
-        # 天线：略带弧度 + 顶端呼吸光点
-        ant = QPainterPath()
-        ant.moveTo(cx, cy - 46)
-        ant.quadTo(cx + 5, cy - 60, cx, cy - 76)
-        p.setPen(QPen(QColor("#7FA8D0"), 2))
-        p.drawPath(ant)
-        pulse = 4.6 + (math.sin(t * 6) * 1.1 if self.talking else math.sin(t * 1.6) * 0.5)
-        p.setBrush(QColor(93, 202, 165, 55))
-        p.drawEllipse(QPoint(int(cx), int(cy - 79)), int(pulse + 5), int(pulse + 5))
-        p.setBrush(QColor(SPARK if self.talking else glow_c))
-        p.drawEllipse(QPoint(int(cx), int(cy - 79)), int(pulse), int(pulse))
-
-        # 身体：径向渐变蛋形
-        body = QRadialGradient(cx - 18, cy - 42, 6)
-        body.setColorAt(0.0, QColor("#FFFFFF"))
-        body.setColorAt(0.32, QColor("#E9F3FD"))
-        body.setColorAt(0.78, QColor("#C3D9F1"))
-        body.setColorAt(1.0, QColor("#A5C2E0"))
-        p.setPen(QPen(QColor("#7FA8D0"), 1.2))
-        p.setBrush(QBrush(body))
-        p.drawEllipse(int(cx - 43), int(cy - 49), 86, 98)
-
-        # 顶部高光
-        p.setPen(Qt.NoPen)
-        p.setBrush(QColor(255, 255, 255, 120))
-        p.drawEllipse(QPoint(int(cx - 16), int(cy - 34)), 15, 9)
-
-        # 面罩：深色渐变 + 一道高光弧
-        visor = QLinearGradient(cx, cy - 32, cx, cy + 16)
-        visor.setColorAt(0.0, QColor("#1B4675"))
-        visor.setColorAt(1.0, QColor("#0A2647"))
-        p.setPen(QPen(QColor("#2E6394"), 1))
-        p.setBrush(QBrush(visor))
-        p.drawRoundedRect(int(cx - 34), int(cy - 31), 68, 47, 21, 21)
         hl = QPainterPath()
-        hl.moveTo(cx - 26, cy - 16)
-        hl.quadTo(cx - 12, cy - 28, cx + 4, cy - 26)
-        p.setPen(QPen(QColor(255, 255, 255, 55), 2.2))
-        p.setBrush(Qt.NoBrush)
+        hl.moveTo(cx - r * 0.65, hy - r * 0.42)
+        hl.quadTo(cx - r * 0.1, hy - r * 0.86, cx + r * 0.52, hy - r * 0.5)
         p.drawPath(hl)
         p.setPen(Qt.NoPen)
+        # 呆毛
+        if spec.get("ahoge"):
+            a = QPainterPath()
+            a.moveTo(cx - 3, hy - R + 2)
+            a.quadTo(cx + 6 + sway * 4, hy - R - 14, cx + 20 + sway * 6, hy - R - 6)
+            p.setPen(QPen(QColor(spec["hair"]), 2.6))
+            p.setBrush(Qt.NoBrush)
+            p.drawPath(a)
+            p.setPen(Qt.NoPen)
 
+    # ---- 嘴 / 鼻 ----
+    def _chibi_mouth(self, p, cx, hy, spec, t):
+        my = hy + 21
+        p.setPen(QPen(QColor("#4A4A4A"), 1.8))
+        p.setBrush(Qt.NoBrush)
         if self.talking:
-            for i in range(5):
-                h = 5 + abs(math.sin(t * 9 + i * 0.9)) * 13
-                g = QLinearGradient(0, cy - 18 - h / 2, 0, cy - 18 + h / 2)
-                g.setColorAt(0.0, QColor("#BFF0DF"))
-                g.setColorAt(1.0, QColor(EYE))
-                p.setBrush(QBrush(g))
-                p.drawRoundedRect(int(cx - 23 + i * 11), int(cy - 18 - h / 2), 6, int(h), 3, 3)
-        elif blinking:
-            p.setBrush(QColor(EYE))
-            p.drawRoundedRect(int(cx - 25), int(cy - 11), 21, 3, 2, 2)
-            p.drawRoundedRect(int(cx + 4), int(cy - 11), 21, 3, 2, 2)
-        else:
-            for ex in (cx - 14, cx + 14):
-                p.setBrush(QColor(93, 202, 165, 70))
-                p.drawEllipse(QPoint(int(ex), int(cy - 9)), 11, 12)
-                p.setBrush(QColor(EYE))
-                p.drawEllipse(QPoint(int(ex), int(cy - 9)), 7, 8)
-                p.setBrush(QColor(255, 255, 255, 210))
-                p.drawEllipse(QPoint(int(ex) - 2, int(cy - 12)), 2, 2)
+            p.setBrush(QColor("#E08B95"))
+            p.setPen(QPen(QColor("#C9707B"), 1.4))
+            p.drawEllipse(QPoint(int(cx), int(my + 1)), 4.2, 3 + abs(math.sin(t * 9)) * 2.2)
+            p.setPen(Qt.NoPen)
+            return
+        if spec.get("muzzle"):
+            # 犬科/虎：小鼻头 + ω 嘴
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor("#5A4A44"))
+            nose = QPainterPath()
+            nose.moveTo(cx - 3.6, my - 5)
+            nose.quadTo(cx, my - 8.6, cx + 3.6, my - 5)
+            nose.quadTo(cx, my - 1.6, cx - 3.6, my - 5)
+            p.drawPath(nose)
+            p.setPen(QPen(QColor("#4A4A4A"), 1.6))
+            p.setBrush(Qt.NoBrush)
+            m = QPainterPath()
+            m.moveTo(cx - 6, my - 1)
+            m.quadTo(cx - 3, my + 3.4, cx, my - 0.4)
+            m.quadTo(cx + 3, my + 3.4, cx + 6, my - 1)
+            p.drawPath(m)
+            p.setPen(Qt.NoPen)
+            return
+        m = QPainterPath()
+        m.moveTo(cx - 4.5, my - 2)
+        m.quadTo(cx, my + 2.6, cx + 4.5, my - 2)
+        p.drawPath(m)
+
+    # ---- 配件：发带 / 耳机 / 天线 ----
+    def _chibi_acc(self, p, cx, hy, r, t, spec, glow_c):
+        acc = spec.get("acc")
+        if acc == "ribbon":
+            rx, ry = cx - r * 0.72, hy - r * 0.66
+            col = QColor(spec["acc_color"])
+            p.setPen(Qt.NoPen)
+            p.setBrush(col)
+            for s in (-1, 1):
+                rp = QPainterPath()
+                rp.moveTo(rx, ry)
+                rp.quadTo(rx + s * 11, ry - 8, rx + s * 13, ry + 3)
+                rp.quadTo(rx + s * 6, ry + 4, rx, ry)
+                p.drawPath(rp)
+            p.setBrush(col.lighter(115))
+            p.drawEllipse(QPoint(int(rx), int(ry)), 3.4, 3.4)
+        elif acc == "headset":
+            col = QColor(spec["acc_color"])
+            p.setPen(QPen(QColor(spec["hair_sh"]), 3.2))
+            p.setBrush(Qt.NoBrush)
+            band = QPainterPath()
+            band.moveTo(cx - r * 0.95, hy - 2)
+            band.arcTo(QRectF(cx - r - 4, hy - r - 8, 2 * (r + 4), 2 * (r + 4)), 175, -170)
+            p.drawPath(band)
+            p.setPen(QPen(QColor("#5B7FA6"), 1.2))
+            p.setBrush(col)
+            for s in (-1, 1):
+                p.drawRoundedRect(int(cx + s * r - (7 if s > 0 else 1)), int(hy - 8), 8, 15, 3, 3)
+            p.setPen(Qt.NoPen)
+        if spec.get("antenna"):
+            ant = QPainterPath()
+            ant.moveTo(cx, hy - r - 1)
+            ant.quadTo(cx + 5, hy - r - 14, cx + 1, hy - r - 24)
+            p.setPen(QPen(QColor("#8FB6DC"), 2))
+            p.setBrush(Qt.NoBrush)
+            p.drawPath(ant)
+            pulse = 4.2 + (math.sin(t * 6) if self.talking else math.sin(t * 1.6) * 0.5)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(93, 202, 165, 60))
+            p.drawEllipse(QPoint(int(cx + 1), int(hy - r - 27)), int(pulse + 5), int(pulse + 5))
+            p.setBrush(QColor(SPARK if self.talking else glow_c))
+            p.drawEllipse(QPoint(int(cx + 1), int(hy - r - 27)), int(pulse), int(pulse))
+
+    # ---- 尾巴 ----
+    def _chibi_tail(self, p, cx, cy, t, spec):
+        kind = spec["tail"]
+        sway = math.sin(t * 1.9)
+        if kind == "cat":
+            path = QPainterPath()
+            path.moveTo(cx + 16, cy + 34)
+            path.quadTo(cx + 54, cy + 36 + sway * 4, cx + 42 + sway * 5, cy + 4)
+            p.setPen(QPen(QColor(spec["hair_sh"]), 11, Qt.SolidLine, Qt.RoundCap))
+            p.drawPath(path)
+            p.setPen(QPen(QColor(spec["hair"]), 7, Qt.SolidLine, Qt.RoundCap))
+            p.drawPath(path)
+        elif kind == "fox":
+            path = QPainterPath()
+            path.moveTo(cx + 18, cy + 32)
+            path.quadTo(cx + 62, cy + 32 + sway * 4, cx + 53 + sway * 4, cy - 6)
+            p.setPen(QPen(QColor(spec["hair_sh"]), 18, Qt.SolidLine, Qt.RoundCap))
+            p.drawPath(path)
+            p.setPen(QPen(QColor(spec["hair"]), 13, Qt.SolidLine, Qt.RoundCap))
+            p.drawPath(path)
+            p.setBrush(QColor("#FFFFFF"))
+            p.setPen(Qt.NoPen)
+            p.drawEllipse(QPoint(int(cx + 53 + sway * 4), int(cy - 6)), 5, 5)
+        elif kind == "curl":
+            path = QPainterPath()
+            path.moveTo(cx + 16, cy + 33)
+            path.quadTo(cx + 50, cy + 38, cx + 47, cy + 14)
+            path.quadTo(cx + 44, cy - 4, cx + 28, cy + 1)
+            p.setPen(QPen(QColor(spec["hair_sh"]), 11, Qt.SolidLine, Qt.RoundCap))
+            p.drawPath(path)
+            p.setPen(QPen(QColor("#FBE9CF"), 7, Qt.SolidLine, Qt.RoundCap))
+            p.drawPath(path)
+        elif kind == "ball":
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(spec["hair"]))
+            p.drawEllipse(QPoint(int(cx + 30), int(cy + 34)), 10, 10)
+            p.setBrush(QColor("#FFFFFF"))
+            p.drawEllipse(QPoint(int(cx + 30), int(cy + 34)), 6, 6)
+        elif kind == "tiger":
+            path = QPainterPath()
+            path.moveTo(cx + 16, cy + 34)
+            path.quadTo(cx + 56, cy + 36 + sway * 5, cx + 44 + sway * 5, cy + 4)
+            p.setPen(QPen(QColor(spec["hair_sh"]), 12, Qt.SolidLine, Qt.RoundCap))
+            p.drawPath(path)
+            p.setPen(QPen(QColor(spec["hair_sh"]), 12, Qt.SolidLine, Qt.RoundCap))
+            p.drawPath(path)
+            # 虎纹
+            p.setPen(QPen(QColor(spec["stripes"]), 2.4, Qt.SolidLine, Qt.RoundCap))
+            for i, frac in enumerate((0.25, 0.5, 0.75)):
+                pt = path.pointAtPercent(frac)
+                p.drawLine(int(pt.x() - 4), int(pt.y() - 5), int(pt.x() + 4), int(pt.y() + 5))
+
+    # ---- 主入口 ----
+    def _draw_chibi(self, p, cx, cy, t, blinking, name, glow_c):
+        spec = self.CHIBI.get(name) or self.CHIBI["cat"]
+        jud = 5 if spec.get("jelly") else 0
+        breath = math.sin(t * 1.7) * 1.5
+        hy = cy - 15 + breath * 0.3
+        r = 32 + jud
+        sway = math.sin(t * 1.3)
+
+        self._chibi_tail(p, cx, cy, t, spec)
+
+        # 身体（Q 版：小身体大头）
+        bw = 40 + jud
+        body = QLinearGradient(0, cy + 6, 0, cy + 48)
+        body.setColorAt(0.0, QColor(spec["hair"]))
+        body.setColorAt(1.0, QColor(spec["hair_sh"]))
+        p.setPen(QPen(QColor(spec["hair_sh"]), 1.2))
+        p.setBrush(QBrush(body))
+        p.drawRoundedRect(int(cx - bw / 2), int(cy + 8), int(bw), 38, 15, 15)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(spec["skin"]))
+        for s in (-1, 1):   # 手
+            p.drawEllipse(QPoint(int(cx + s * (bw / 2 - 3)), int(cy + 25)), 6, 6.5)
+        p.setBrush(QColor(spec["hair_sh"]))
+        for s in (-1, 1):   # 脚
+            p.drawEllipse(QPoint(int(cx + s * 11), int(cy + 45)), 7, 5)
+
+        self._chibi_ears(p, cx, hy, r, t, spec, sway)
+
+        # 头
+        head = QRadialGradient(cx - r * 0.35, hy - r * 0.45, r * 0.35)
+        head.setColorAt(0.0, QColor(spec["skin"]).lighter(105))
+        head.setColorAt(1.0, QColor(spec["skin"]))
+        p.setPen(QPen(QColor(spec["hair_sh"]).lighter(125), 1.2))
+        p.setBrush(QBrush(head))
+        p.drawEllipse(QPoint(int(cx), int(hy)), r, int(r * 1.02))
+
+        # 熊猫黑眼圈
+        if spec.get("panda"):
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor("#333333"))
+            for s in (-1, 1):
+                p.save()
+                p.translate(cx + s * 13.5, hy + 7)
+                p.rotate(s * 18)
+                p.drawEllipse(QPoint(0, 0), 10, 12)
+                p.restore()
+
+        self._chibi_hair(p, cx, hy, r, t, spec, sway)
+
+        # 虎纹（额头）
+        if spec.get("stripes"):
+            p.setPen(QPen(QColor(spec["stripes"]), 2.6, Qt.SolidLine, Qt.RoundCap))
+            for dx in (-7, 0, 7):
+                p.drawLine(int(cx + dx), int(hy - r * 0.66), int(cx + dx * 1.3), int(hy - r * 0.34))
+            p.setPen(Qt.NoPen)
+
+        self._chibi_eyes(p, cx, hy, spec, blinking, self.talking, t)
+
+        # 腮红
+        bc = QColor(spec["blush"])
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(bc.red(), bc.green(), bc.blue(), 95))
+        for s in (-1, 1):
+            p.drawEllipse(QPoint(int(cx + s * 21), int(hy + 14)), 5.5, 3.4)
+
+        self._chibi_mouth(p, cx, hy, spec, t)
+        self._chibi_acc(p, cx, hy, r, t, spec, glow_c)
 
 
 class Bubble(QWidget):
