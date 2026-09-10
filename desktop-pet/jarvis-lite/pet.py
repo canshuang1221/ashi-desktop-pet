@@ -262,13 +262,18 @@ class Pet(QWidget):
             names = ["%s_%s.png" % (base, key)]
             if key == "idle":
                 names.append("%s.png" % base)   # 容许只有一张不带后缀的
+            found = False
             for fname in names:
-                path = os.path.join(config.ASSETS_DIR, fname)
-                if os.path.exists(path):
-                    pm = QPixmap(path)
-                    if not pm.isNull():
-                        out[key] = pm
-                        break
+                for d in config.ASSETS_DIRS:
+                    path = os.path.join(d, fname)
+                    if os.path.exists(path):
+                        pm = QPixmap(path)
+                        if not pm.isNull():
+                            out[key] = pm
+                            found = True
+                            break
+                if found:
+                    break
         if out:
             cache[name] = out
         return out
@@ -278,6 +283,11 @@ class Pet(QWidget):
         "shiba": (239, 159, 39),
         "panda": (168, 194, 224),
         "slime": (93, 202, 165),
+        # 立绘也要给个配色，否则说话外发光和感知光环会走默认的绿色，跟角色不搭
+        "pic_cat": (246, 185, 196),
+        "pic_fox": (239, 159, 39),
+        "pic_panda": (168, 194, 224),
+        "pic_robot": (93, 202, 165),
     }
 
     def set_talking(self, v):

@@ -13,21 +13,24 @@ MEMORY_DIR = os.path.join(BASE_DIR, "memory")
 NOTES_DIR = os.path.join(BASE_DIR, "notes")
 
 
-def _assets_dir():
-    """形象图片等只读资源的目录。
+def _assets_dirs():
+    """形象素材的搜索目录，按优先级排列。
 
-    打包成 onefile 后资源被解压到 sys._MEIPASS；开发时就在源码目录旁边的
-    assets/。两边都找不到时退回 BASE_DIR，调用方自己判断文件是否存在。
+    1. exe 旁边的 assets/  —— 用户直接丢素材进去就能用，不必重新打包
+    2. 打包进 exe 的 assets/（sys._MEIPASS）—— 随包分发的默认素材
+    开发态两者其实是同一个目录。多个目录会合并查找同名文件，前者优先。
     """
-    base = getattr(sys, "_MEIPASS", None)
-    if base:
-        p = os.path.join(base, "assets")
-        if os.path.isdir(p):
-            return p
-    return os.path.join(BASE_DIR, "assets")
+    dirs = [os.path.join(BASE_DIR, "assets")]
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        bundled = os.path.join(meipass, "assets")
+        if os.path.abspath(bundled) != os.path.abspath(dirs[0]):
+            dirs.append(bundled)
+    return dirs
 
 
-ASSETS_DIR = _assets_dir()
+ASSETS_DIRS = _assets_dirs()
+ASSETS_DIR = ASSETS_DIRS[0]     # 兼容旧引用：写入用的主目录
 
 DEFAULT = {
     "api": {
