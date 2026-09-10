@@ -15,7 +15,7 @@ def _short_user(kind, text):
 
     感知提示词约 500 字，绝大部分是固定模板 + 「最近说过的话」列表。
     存进历史后每条都要占上下文（_build 会带最近 12 条），既费 token
-    又会让模型把指令当成用户说过的话。真正有价值的是小贾自己的回复，
+    又会让模型把指令当成用户说过的话。真正有价值的是它自己的回复，
     所以自动触发的只留一个短标记。
     """
     if kind == "chat":
@@ -37,7 +37,7 @@ class Brain:
     # ---------- 关于用户的长期记忆 ----------
     # 和「对话记录」不是一回事：对话记录是流水账（按天、只留最近 60 条），
     # 这里是**提炼过的事实**（他喜欢什么、在做什么、反感什么），
-    # 会一直拼在 system 里，所以小贾越用越懂他。
+    # 会一直拼在 system 里，所以它越用越懂他。
     def _load_memo(self):
         try:
             with open(config.USER_MEMO_PATH, "r", encoding="utf-8") as f:
@@ -145,8 +145,8 @@ class Brain:
     def _build(self, user_text, image_b64=None, fresh=False):
         # 长期记忆 + 今日足迹都拼在 system 里：不占历史窗口，也不会被 60 条上限滚掉
         msgs = [{"role": "system",
-                 "content": self.cfg["persona"] + self.memo_block()
-                 + activity.block()}]
+                 "content": config.render(self.cfg["persona"], self.cfg)
+                 + self.memo_block() + activity.block()}]
         if not fresh:
             msgs += self.history[-12:]
         if image_b64:

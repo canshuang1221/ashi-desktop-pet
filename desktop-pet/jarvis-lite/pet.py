@@ -363,43 +363,43 @@ class Pet(QWidget):
     # 可爱与否主要靠眼睛：眼白 + 渐变虹膜 + 深瞳 + 双高光 + 上眼睑睫毛 + 腮红。
     CHIBI = {
         "cat": dict(
-            label="猫娘小贾", skin="#FFF1E6", hair="#F7B98B", hair_sh="#DD9256",
+            label="猫娘", skin="#FFF1E6", hair="#F7B98B", hair_sh="#DD9256",
             eye="#3FA9A0", ear="cat", ear_in="#F9C7D0", acc="ribbon",
             acc_color="#EF8095", tail="cat", blush="#F6A9B8", ahoge=True,
         ),
         "shiba": dict(
-            label="柴犬小贾", skin="#F7C98B", hair="#F0B96C", hair_sh="#D0913F",
+            label="柴犬", skin="#F7C98B", hair="#F0B96C", hair_sh="#D0913F",
             eye="#4A4238", ear="dog", ear_in="#FCEBDA", acc=None,
             acc_color=None, tail="curl", blush="#EE9E86", muzzle=True,
         ),
         "fox": dict(
-            label="狐娘小贾", skin="#FFF4E9", hair="#F6E7D7", hair_sh="#D9C1A6",
+            label="狐娘", skin="#FFF4E9", hair="#F6E7D7", hair_sh="#D9C1A6",
             eye="#E2A03C", ear="fox", ear_in="#F8D6C4", acc=None,
             acc_color=None, tail="fox", blush="#F3BEC0", muzzle=True,
         ),
         "bunny": dict(
-            label="兔娘小贾", skin="#FFF3F2", hair="#DCD1F5", hair_sh="#B7A6DE",
+            label="兔娘", skin="#FFF3F2", hair="#DCD1F5", hair_sh="#B7A6DE",
             eye="#8E6FD8", ear="bunny", ear_in="#F8CBDB", acc="ribbon",
             acc_color="#9B8CE0", tail="ball", blush="#F2B6C6", ahoge=False,
         ),
         "panda": dict(
-            label="熊猫小贾", skin="#FDFDFD", hair="#3C3C3C", hair_sh="#242424",
+            label="熊猫", skin="#FDFDFD", hair="#3C3C3C", hair_sh="#242424",
             eye="#2B2B2B", ear="round", ear_in="#5E5E5E", acc=None,
             acc_color=None, tail="ball", blush="#F3B9C2", panda=True, bare=True,
         ),
         "tiger": dict(
-            label="虎娘小贾", skin="#FFDCA6", hair="#F5B65C", hair_sh="#D18F33",
+            label="虎娘", skin="#FFDCA6", hair="#F5B65C", hair_sh="#D18F33",
             eye="#3F8A6E", ear="round", ear_in="#F8D2D8", acc=None,
             acc_color=None, tail="tiger", blush="#F2A98F", muzzle=True,
             stripes="#9A6430",
         ),
         "robot": dict(
-            label="机娘小贾", skin="#EEF5FF", hair="#A6C9EA", hair_sh="#7BA6D0",
+            label="机娘", skin="#EEF5FF", hair="#A6C9EA", hair_sh="#7BA6D0",
             eye="#5DCAA5", ear="none", ear_in=None, acc="headset",
             acc_color="#5DCAA5", tail=None, blush="#C3DAF5", antenna=True,
         ),
         "slime": dict(
-            label="果冻小贾", skin="#B9EED9", hair="#7CD9B8", hair_sh="#4BBE97",
+            label="果冻", skin="#B9EED9", hair="#7CD9B8", hair_sh="#4BBE97",
             eye="#2E6E58", ear="none", ear_in=None, acc=None, acc_color=None,
             tail=None, blush="#F6A9B8", jelly=True, bare=True,
         ),

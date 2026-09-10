@@ -17,7 +17,7 @@ import config
 import activity
 from brain import Brain
 from chat import ChatWindow
-from history import History
+from history import History, Memo
 from pet import Bubble, Pet
 from settings import Settings
 
@@ -96,7 +96,7 @@ class SenseWorker(QThread):
                       self.image)
 
 
-def make_icon():
+def make_icon(pet_name="桌宠"):
     pm = QPixmap(64, 64)
     pm.fill(Qt.transparent)
     p = QPainter(pm)
@@ -106,7 +106,7 @@ def make_icon():
     p.drawEllipse(4, 4, 56, 56)
     p.setPen(QColor("#5DCAA5"))
     p.setFont(QFont("Microsoft YaHei", 28, QFont.Bold))
-    p.drawText(pm.rect(), Qt.AlignCenter, "贾")
+    p.drawText(pm.rect(), Qt.AlignCenter, pet_name[:1])
     p.end()
     return QIcon(pm)
 
@@ -225,8 +225,8 @@ class App:
             pass
 
     def _tray(self):
-        self.tray = QSystemTrayIcon(make_icon(), self.app)
-        self.tray.setToolTip("小贾 · 桌宠")
+        self.tray = QSystemTrayIcon(make_icon(self.cfg["pet"]["name"]), self.app)
+        self.tray.setToolTip("%s · 桌宠" % self.cfg["pet"]["name"])
         m = QMenu()
         # 必须显式设置 item 文字色：只给 QMenu 白底的话，深色系统主题下
         # 菜单项文字仍是系统白色 → 白底白字悬停根本看不清
@@ -255,7 +255,7 @@ class App:
         self.act_sense.triggered.connect(self.toggle_sense)
         m.addAction(self.act_sense)
         add("设置", self.open_settings)
-        add("小贾记住了什么", self.open_user_memory)
+        add("%s记住了什么" % self.cfg["pet"]["name"], self.open_user_memory)
         m.addSeparator()
         add("退出", self.quit)
         self.tray.setContextMenu(m)
@@ -414,7 +414,7 @@ class App:
         return d
 
     def show_history(self):
-        self._open_dialog("history", History)
+        self._open_dialog("history", lambda: History(self.cfg))
 
     def clear_memory(self):
         """清空「对话记录」（流水账）。入口已从托盘挪到设置面板，避免误触。"""
@@ -428,14 +428,12 @@ class App:
         self.bubble.say(self.pet, "关于他的记忆清空了，重新认识一下", 3000)
 
     def open_user_memory(self):
-        """长按托盘的「小贾记住了什么」：直接打开长期记忆文件，看得见、可手改。"""
-        path = config.USER_MEMO_PATH
-        if not os.path.exists(path):
-            self.brain.save_memo("")
-        try:
-            os.startfile(path)
-        except Exception as e:
-            self.bubble.say(self.pet, "打不开了：%s" % str(e)[:40], 6000)
+        """托盘「记住了什么」：弹窗显示长期记忆，看得见、可手改。
+
+        以前是拿 os.startfile 打开 user_memory.md，但 .md 在系统里没有
+        关联程序时 Windows 会静默失败——点了菜单像没反应。改成自己弹窗。
+        """
+        self._open_dialog("memo", lambda: Memo(self.cfg))
 
     def open_settings(self):
         if not hasattr(self, "pet"):   # 已有一个实例在跑时本进程没有桌宠对象
@@ -450,8 +448,20 @@ class App:
         self.pet.apply_scale(cfg["pet"].get("scale", 1.0))
         self.pet.set_skin(cfg["pet"].get("skin", "cat"))
         self.chat.apply_font(cfg.get("ui", {}).get("font_size", 12))
+        self._refresh_name()
         self._sync_timer()
         self.bubble.say(self.pet, "设置已保存", 2500)
+
+    def _refresh_name(self):
+        """改完名字立刻反映到托盘提示、图标和菜单项上，不用重启。"""
+        name = self.cfg["pet"].get("name") or "桌宠"
+        self.tray.setToolTip("%s · 桌宠" % name)
+        self.tray.setIcon(make_icon(name))
+        menu = self.tray.contextMenu()
+        if menu is not None:
+            for act in menu.actions():
+                if act.text().endswith("记住了什么"):
+                    act.setText("%s记住了什么" % name)
 
     # 用户明确说过：要的是「陪伴」，不是「另一个 agent」。
     # 一旦发言里冒出助手口气（提建议、问要不要、提醒休息），就在这里再压一遍。
@@ -647,7 +657,7 @@ class App:
         shot = brain_mod.grab_screen(scale=scale, quality=quality,
                                      foreground=(scope != "screen"))
         self._save_shot(shot, sense.get("keep_shots", 8))
-        prompt = self._vary(sense["prompt"])
+        prompt = config.render(self._vary(sense["prompt"]), self.cfg)
         # 告诉它自己现在是什么样子，屏幕里那个卡通形象就是本尊，不是屏幕内容
         prompt += ("\n（你现在是「%s」的样子，画面里那个卡通形象就是你自己，"
                    "不是屏幕里的内容。）" % self.pet.label(self.pet._skin))
@@ -691,6 +701,7 @@ class App:
             .replace("{time}", now.strftime("%H:%M"))
             .replace("{date}", now.strftime("%Y-%m-%d"))
         )
+        prompt = config.render(prompt, self.cfg)
         w = SenseWorker(self.brain, self._vary(prompt), None, record=True,
                         kind="auto", fresh=True)
         w.got.connect(self._on_tick)
@@ -716,8 +727,8 @@ class App:
             from PySide6.QtWidgets import QMessageBox
 
             QMessageBox.information(
-                None, "小贾",
-                "小贾已经在运行了。\n\n"
+                None, self.cfg["pet"]["name"],
+                "%s已经在运行了。\n\n" % self.cfg["pet"]["name"] +
                 "如果看不到它，可能是靠边隐藏了：把鼠标移到屏幕左右边缘，"
                 "或用托盘图标 → 桌宠归位。",
             )

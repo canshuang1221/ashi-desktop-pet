@@ -69,7 +69,7 @@ class ChatWindow(QWidget):
         self.note_worker = None
         self.drag = None
 
-        self.setWindowTitle("小贾")
+        self.setWindowTitle(cfg["pet"]["name"])
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.resize(420, 560)
         self._build()
@@ -85,7 +85,7 @@ class ChatWindow(QWidget):
         root.setSpacing(8)
 
         bar = QHBoxLayout()
-        title = QLabel("小贾 · 桌宠对话")
+        title = QLabel("%s · 桌宠对话" % self.cfg["pet"]["name"])
         title.setFont(QFont("Microsoft YaHei", 11, QFont.Medium))
         self.tip = QLabel("")
         self.tip.setStyleSheet("color:#888780;font-size:11px;")
@@ -200,7 +200,7 @@ class ChatWindow(QWidget):
                     notice=True)
             except Exception:
                 pass
-        self._append("小贾", bubble_text)
+        self._append(self.cfg["pet"]["name"], bubble_text)
         self._cursor_end()
         self.input.setFocus()
 
@@ -227,7 +227,7 @@ class ChatWindow(QWidget):
         return super().eventFilter(obj, e)
 
     # ---------- 对话 ----------
-    # 微信式气泡：小贾在左（白底）、你在右（绿底）、系统提示居中灰底。
+    # 微信式气泡：宠物在左（白底）、用户在右（绿底）、系统提示居中灰底。
     # QTextDocument 不支持 inline-block 和圆角，所以用定宽 table 模拟气泡，
     # 宽度按像素估算（中文全宽、ASCII 半宽），超宽自动封顶换行。
     def _bubble_html(self, who, text):
@@ -297,7 +297,7 @@ class ChatWindow(QWidget):
         self.input.clear()
         self.tip.setText("")
         self._append("你", text)
-        self._append("小贾", "")
+        self._append(self.cfg["pet"]["name"], "")
         self._cursor_end()
         self.pet.set_talking(True)
         # 来自气泡的会话：第一条消息自动带上截图和气泡那句话，且不掺历史
@@ -308,7 +308,7 @@ class ChatWindow(QWidget):
             fresh = True
             if ctx:
                 prompt = ("（你刚才看了用户的屏幕，说的是「%s」。用户接着这个话题说：）%s\n"
-                          "（提示：截图里若出现小贾桌宠的卡通形象——"
+                          "（提示：截图里若出现桌宠的卡通形象——"
                           "猫猫/史莱姆/机器人造型——那是你自己，"
                           "不要对它提问或评论。）") % (ctx, text)
             else:

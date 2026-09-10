@@ -239,15 +239,37 @@ def solid_bbox(im, a_min=120, min_count=12, pad=8):
             min(W, int(cols[-1]) + 1 + pad), min(H, int(rows[-1]) + 1 + pad))
 
 
-def place(im, scale, box=None):
-    bbox = box or im.getbbox()
-    if bbox is None:
+def centroid_x(im, box, a_min=128):
+    """前景像素在 box 内的水平质心。
+
+    用它做左右对齐比包围盒中心稳：包围盒边上有几个残留像素就会把中心带偏，
+    质心受这种噪声影响小得多。
+    """
+    a = np.array(im)[:, :, 3]
+    sub = a[max(0, box[1]):box[3], max(0, box[0]):box[2]]
+    m = sub > a_min
+    if not m.any():
+        return (box[2] - box[0]) / 2.0
+    return float(np.nonzero(m)[1].mean())
+
+
+def place(im, box, scale):
+    """按「自己的包围盒」把某一帧摆到画布上。
+
+    关键：**每帧各自归一化**，不是三帧共用一个裁剪框。
+    因为图像编辑生成的帧，角色整体尺寸和原帧并不完全一样
+    （实测毛绒小兽那套，编辑后的角色比睁眼帧矮 7%），
+    共用裁剪框会让换帧时角色突然变大变小。
+    所以每帧都缩放到同样的高度、按各自的质心水平对齐、底边对齐同一基线。
+    """
+    if box is None:
         raise SystemExit("抠完是空白，检查阈值")
-    cut = im.crop(bbox)
+    cut = im.crop(box)
     nw, nh = max(1, int(cut.width * scale)), max(1, int(cut.height * scale))
     cut = cut.resize((nw, nh), Image.LANCZOS)
+    cx = centroid_x(im, box) * scale
     canvas = Image.new("RGBA", CANVAS, (0, 0, 0, 0))
-    canvas.paste(cut, (CANVAS[0] // 2 - nw // 2, BASELINE - nh), cut)
+    canvas.paste(cut, (int(CANVAS[0] / 2 - cx), BASELINE - nh), cut)
     return canvas
 
 
@@ -267,14 +289,15 @@ for base, files in JOBS.items():
     if "idle" not in keyed:
         continue
     boxes = {k: solid_bbox(v) for k, v in keyed.items()}
-    # 三帧共用同一个裁剪框：各帧包围盒大小略有差异（边缘杂点、毛尖），
-    # 若各裁各的，缩放后角色会左右/上下跳动，所以取并集统一裁。
-    box = (min(b[0] for b in boxes.values()), min(b[1] for b in boxes.values()),
-           max(b[2] for b in boxes.values()), max(b[3] for b in boxes.values()))
-    scale = TARGET_H / (box[3] - box[1])
-    print("  %s 统一裁剪框 = %s  缩放 = %.4f" % (base, box, scale))
+    # 每帧各按自己的包围盒归一化（见 place 的说明）。
+    # 注意别图省事让三帧共用一个并集裁剪框：编辑生成的帧角色尺寸可能差 7%，
+    # 那样换帧时角色会突然变大变小。
     for k, im in keyed.items():
+        box = boxes[k]
+        scale = TARGET_H / max(1, box[3] - box[1])
         dst = os.path.join(OUT, "%s_%s.png" % (base, k))
-        place(im, scale, box).save(dst)
-        print("  写出", os.path.basename(dst), os.path.getsize(dst), "字节")
+        place(im, box, scale).save(dst)
+        print("  %-6s 框=%s 高=%d 缩放=%.4f -> %s (%d 字节)"
+              % (k, box, box[3] - box[1], scale, os.path.basename(dst),
+                 os.path.getsize(dst)))
 print("DONE")

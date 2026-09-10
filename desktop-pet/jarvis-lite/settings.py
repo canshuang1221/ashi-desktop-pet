@@ -249,6 +249,11 @@ class Settings(QDialog):
         f = QFormLayout(w)
         f.setSpacing(10)
 
+        self.pet_name = QLineEdit()
+        self.pet_name.setMaxLength(12)
+        self.pet_name.setText(self.cfg["pet"].get("name", "阿拾"))
+        self.pet_name.setPlaceholderText("给它起个名字")
+
         self.scale = QSlider(Qt.Horizontal)
         self.scale.setRange(50, 220)
         self.scale.setValue(int(self.cfg["pet"].get("scale", 1.0) * 100))
@@ -305,6 +310,7 @@ class Settings(QDialog):
         self.bub_ms.valueChanged.connect(self._ms_live)
         self._ms_live(self.bub_ms.value())
 
+        f.addRow("名字", self.pet_name)
         f.addRow("形象", self.skin)
         f.addRow("桌宠缩放", self.srow)
         f.addRow("字号", self.frow)
@@ -326,8 +332,8 @@ class Settings(QDialog):
         tip = QLabel(
             "三样东西别再搞混了：\n"
             "· 对话记录：按天的聊天流水账，只保留最近 60 条，用来当聊天上下文。\n"
-            "· 长期记忆：小贾从聊天里提炼出「关于你这个人」的事实，越用越懂你。\n"
-            "· 今日足迹：小贾从屏幕里看到的你一天在干什么（看视频/工作/摸鱼/打游戏…），"
+            "· 长期记忆：它从聊天里提炼出「关于你这个人」的事实，越用越懂你。\n"
+            "· 今日足迹：它从屏幕里看到的你一天在干什么（看视频/工作/摸鱼/打游戏…），"
             "不需要你开口说话也能积累。\n"
             "清空都会先弹确认，不放托盘里就是为了防误触。")
         tip.setStyleSheet("color:%s;font-size:12px;" % theme.TEXT_SUB)
@@ -338,7 +344,7 @@ class Settings(QDialog):
         self.btn_clear_chat.setCursor(Qt.PointingHandCursor)
         self.btn_clear_chat.clicked.connect(self._do_clear_chat)
 
-        self.btn_clear_memo = QPushButton("清空小贾对我的长期记忆")
+        self.btn_clear_memo = QPushButton("清空它对我的长期记忆")
         self.btn_clear_memo.setObjectName("ghost")
         self.btn_clear_memo.setCursor(Qt.PointingHandCursor)
         self.btn_clear_memo.clicked.connect(self._do_clear_memo)
@@ -401,7 +407,7 @@ class Settings(QDialog):
     def _do_clear_memo(self):
         if QMessageBox.question(
                 self, "确认清空长期记忆",
-                "清空小贾提炼的、关于你的长期记忆？\n（对话记录不受影响）",
+                "清空它提炼的、关于你的长期记忆？\n（对话记录不受影响）",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
             return
         brain = self._brain()
@@ -410,13 +416,16 @@ class Settings(QDialog):
         QMessageBox.information(self, "完成", "长期记忆已清空。")
 
     def _open_memo(self):
-        brain = self._brain()
-        if brain is not None and not os.path.exists(config.USER_MEMO_PATH):
-            brain.save_memo("")
-        try:
-            os.startfile(config.USER_MEMO_PATH)
-        except Exception as e:
-            QMessageBox.warning(self, "打不开", str(e)[:120])
+        """弹窗看长期记忆。
+
+        原先用 os.startfile 打开 .md，系统没关联程序时会静默失败，
+        跟「点了没反应」一样，所以改成自己弹窗。
+        """
+        from history import Memo
+        self._memo_win = Memo(self.cfg)
+        self._memo_win.show()
+        self._memo_win.raise_()
+        self._memo_win.activateWindow()
 
     # ---------- 滑条实时预览 ----------
     def _scale_live(self, v):
@@ -517,6 +526,7 @@ class Settings(QDialog):
         self.cfg["sense"]["enabled"] = self.sense.isChecked()
         self.cfg["sense"]["interval_sec"] = self.interval.value()
         self.cfg["sense"]["shot_scope"] = self.shot_scope.currentData() or "window"
+        self.cfg["pet"]["name"] = (self.pet_name.text().strip() or "阿拾")
         self.cfg["sense"]["shot_scale"] = self.shot_scale.value() / 100.0
         self.cfg["sense"]["shot_quality"] = self.shot_quality.value()
         self.cfg["sense"]["keep_shots"] = self.keep_shots.value()
