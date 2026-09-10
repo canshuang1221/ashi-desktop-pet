@@ -10,7 +10,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QBrush, QColor, QCursor, QFont, QFontMetrics, QLinearGradient,
-    QPainter, QPainterPath, QPen, QRadialGradient,
+    QPainter, QPainterPath, QPen, QPixmap, QRadialGradient,
 )
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -216,7 +216,62 @@ class Pet(QWidget):
         self._slide(self._dock_target(self._dock_side))
 
     # ---------- 外观 ----------
+    # 矢量画法的形象（立绘见下面的 IMAGE_SKINS，由 available() 合并）
     SKINS = ("cat", "shiba", "fox", "bunny", "panda", "tiger", "robot", "slime")
+
+    # ---- 立绘（图片素材）形象 ----
+    # 素材放 assets/ 下、PNG 带透明通道，命名 <base>_idle.png / _blink.png / _talk.png。
+    # 只有 idle 也能用（其余帧自动退回 idle）；一张都没有时退回第三项指定的矢量画法，
+    # 所以素材没到位程序照样能跑，不会崩。
+    # 用多帧而不是单张，是为了让有立绘的形象也能眨眼、说话，不至于变成一张静止贴图。
+    IMAGE_SKINS = {
+        "pic_cat": ("立绘 · 猫耳少女", "pic_cat", "cat"),
+        "pic_fox": ("立绘 · 狐耳少女", "pic_fox", "fox"),
+        "pic_panda": ("立绘 · 熊猫娘", "pic_panda", "panda"),
+        "pic_robot": ("立绘 · 机娘", "pic_robot", "robot"),
+    }
+    _img_cache = {}
+
+    @classmethod
+    def label(cls, skin):
+        """形象的中文名（设置面板下拉用）。"""
+        if skin in cls.IMAGE_SKINS:
+            return cls.IMAGE_SKINS[skin][0]
+        return (cls.CHIBI.get(skin) or cls.CHIBI["cat"])["label"]
+
+    @classmethod
+    def available(cls):
+        """可选形象：矢量画法全部列出；立绘只在素材确实存在时才出现，
+        免得用户选到一个空条目。素材随时补进来，重开设置面板即可看到。"""
+        out = list(cls.SKINS)
+        for k in cls.IMAGE_SKINS:
+            if cls._frames(k):
+                out.append(k)
+        return out
+
+    @classmethod
+    def _frames(cls, name):
+        """取某套立绘的各帧。只缓存加载成功的，方便用户随时补素材。"""
+        cache = cls._img_cache
+        got = cache.get(name)
+        if got:
+            return got
+        base = cls.IMAGE_SKINS[name][1]
+        out = {}
+        for key in ("idle", "blink", "talk"):
+            names = ["%s_%s.png" % (base, key)]
+            if key == "idle":
+                names.append("%s.png" % base)   # 容许只有一张不带后缀的
+            for fname in names:
+                path = os.path.join(config.ASSETS_DIR, fname)
+                if os.path.exists(path):
+                    pm = QPixmap(path)
+                    if not pm.isNull():
+                        out[key] = pm
+                        break
+        if out:
+            cache[name] = out
+        return out
     GLOW_RGB = {
         "robot": (93, 202, 165),
         "cat": (246, 185, 196),
@@ -229,9 +284,14 @@ class Pet(QWidget):
         self.talking = v
 
     def set_skin(self, skin):
-        """换形象：cat / slime / robot。"""
-        if skin in self.SKINS and skin != self._skin:
+        """换形象：cat / shiba / ... / pic_cat（立绘）。
+
+        切换时清掉图片缓存，这样用户刚把 PNG 放进 assets/ 就能立刻生效，
+        不必重启程序。
+        """
+        if (skin in self.SKINS or skin in self.IMAGE_SKINS) and skin != self._skin:
             self._skin = skin
+            self.__class__._img_cache.clear()
             self.update()
 
     def paintEvent(self, _):
@@ -273,8 +333,8 @@ class Pet(QWidget):
                           (a0 + off) * 16, 70 * 16)
             p.setPen(Qt.NoPen)
 
-        # ---- 按形象分发（八个形象共用 Q 版绘制核心）----
-        self._draw_chibi(p, cx, cy, t, blinking, self._skin, glow_c)
+        # ---- 按形象分发（立绘优先，缺图退回矢量）----
+        self._draw_pet(p, cx, cy, t, blinking, glow_c)
 
         # ---- 底部状态点（感知中带呼吸光）----
         dot = QColor(EYE) if self.sensing else QColor("#9A998F")
@@ -603,6 +663,43 @@ class Pet(QWidget):
             for i, frac in enumerate((0.25, 0.5, 0.75)):
                 pt = path.pointAtPercent(frac)
                 p.drawLine(int(pt.x() - 4), int(pt.y() - 5), int(pt.x() + 4), int(pt.y() + 5))
+
+    # ---- 立绘（图片素材）----
+    def _draw_image(self, p, cx, cy, t, name, blinking):
+        """画立绘。成功返回 True，没有素材返回 False（交给矢量兜底）。
+
+        按 idle 帧的尺寸统一缩放，换帧时人物大小不跳；底部对齐到脚部基线，
+        再叠加呼吸浮动；说话时整体微放大，做出「有反应」的感觉。
+        """
+        fr = self._frames(name)
+        if not fr:
+            return False
+        ref = fr.get("idle") or next(iter(fr.values()))
+        if blinking and "blink" in fr:
+            pm = fr["blink"]
+        elif self.talking and "talk" in fr:
+            pm = fr["talk"]
+        else:
+            pm = ref
+        bob = math.sin(t * 1.7) * 3.2
+        grow = 1.03 if self.talking else 1.0
+        # 注意：paintEvent 已经 p.scale(self._s) 过了，这里用未缩放坐标系
+        avail_w, avail_h = 118.0 * grow, 134.0 * grow
+        scale = min(avail_h / ref.height(), avail_w / ref.width())
+        w, h = ref.width() * scale, ref.height() * scale
+        x = cx - w / 2.0
+        y = cy + 54 - h + bob              # 底部对齐到脚部基线
+        p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        p.drawPixmap(QRectF(x, y, w, h), pm, QRectF(pm.rect()))
+        return True
+
+    def _draw_pet(self, p, cx, cy, t, blinking, glow_c):
+        name = self._skin
+        if name in self.IMAGE_SKINS:
+            if self._draw_image(p, cx, cy, t, name, blinking):
+                return
+            name = self.IMAGE_SKINS[name][2]   # 缺图 → 退回矢量画法
+        self._draw_chibi(p, cx, cy, t, blinking, name, glow_c)
 
     # ---- 主入口 ----
     def _draw_chibi(self, p, cx, cy, t, blinking, name, glow_c):

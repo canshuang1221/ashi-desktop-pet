@@ -89,6 +89,7 @@ class Settings(QDialog):
         self._fetcher = None
         self._tester = None
         self._orig_scale = float(cfg["pet"].get("scale", 1.0))
+        self._orig_skin = cfg["pet"].get("skin", "cat")
         self._orig_ui = dict(cfg.get("ui", {}))
         self.setWindowTitle("设置")
         self.setFixedWidth(560)
@@ -252,12 +253,14 @@ class Settings(QDialog):
         self._scale_live(self.scale.value())
 
         self.skin = QComboBox()
-        # 形象列表直接取自 pet.CHIBI，加新形象只需改 pet.py 一处
-        for val in pet_mod.Pet.SKINS:
-            self.skin.addItem(pet_mod.Pet.CHIBI[val]["label"], val)
+        # 形象列表直接取自 pet.Pet.SKINS，加新形象只需改 pet.py 一处
+        for val in pet_mod.Pet.available():
+            self.skin.addItem(pet_mod.Pet.label(val), val)
         cur = self.cfg["pet"].get("skin", "cat")
         idx = self.skin.findData(cur)
         self.skin.setCurrentIndex(idx if idx >= 0 else 0)
+        # 换形象立即生效，不用等保存
+        self.skin.currentIndexChanged.connect(self._skin_live)
 
         self.font_sz = QSlider(Qt.Horizontal)
         self.font_sz.setRange(9, 18)
@@ -310,6 +313,12 @@ class Settings(QDialog):
         if self.pet is not None:
             self.pet.apply_scale(v / 100.0)
 
+    def _skin_live(self, _idx=None):
+        """换形象立即应用（和缩放滑条一样实时预览，取消则还原）。"""
+        if self.pet is None:
+            return
+        self.pet.set_skin(self.skin.currentData() or "cat")
+
     def _font_live(self, v):
         self.font_lbl.setText("%d px" % v)
         self.cfg.setdefault("ui", {})["font_size"] = v
@@ -326,6 +335,7 @@ class Settings(QDialog):
         # 取消/关窗：还原所有实时改动
         if self.pet is not None:
             self.pet.apply_scale(self._orig_scale)
+            self.pet.set_skin(self._orig_skin)
         self.cfg["ui"] = dict(self._orig_ui)
         super().reject()
 

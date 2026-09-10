@@ -12,6 +12,23 @@ CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 MEMORY_DIR = os.path.join(BASE_DIR, "memory")
 NOTES_DIR = os.path.join(BASE_DIR, "notes")
 
+
+def _assets_dir():
+    """形象图片等只读资源的目录。
+
+    打包成 onefile 后资源被解压到 sys._MEIPASS；开发时就在源码目录旁边的
+    assets/。两边都找不到时退回 BASE_DIR，调用方自己判断文件是否存在。
+    """
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        p = os.path.join(base, "assets")
+        if os.path.isdir(p):
+            return p
+    return os.path.join(BASE_DIR, "assets")
+
+
+ASSETS_DIR = _assets_dir()
+
 DEFAULT = {
     "api": {
         "base_url": "https://api.deepseek.com/v1",
