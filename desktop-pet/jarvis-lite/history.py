@@ -1,6 +1,7 @@
 import html
 import json
 import os
+from datetime import datetime
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -207,3 +208,120 @@ class Memo(QDialog):
         if ans == QMessageBox.Yes:
             self.edit.setPlainText("")
             self._save()
+
+
+class Activity(QDialog):
+    """今天都干了什么：耗时排行 + 要点总结。
+
+    原先这个按钮是直接打开 activity/ 文件夹，里面全是 json，
+    用户看到的是「有文档的文件夹」，根本不知道它记了什么。
+    改成把归纳好的结果和耗时账直接摆出来。也可以看前几天的。
+    """
+
+    def __init__(self, cfg=None):
+        super().__init__()
+        self._cfg = cfg or config.load()
+        self._name = (self._cfg.get("pet") or {}).get("name") or "桌宠"
+        self.setWindowTitle("今天都干了什么")
+        self.resize(580, 560)
+        self.setStyleSheet(theme.app_qss())
+        self._build()
+        self._render()
+
+    def _build(self):
+        root = QVBoxLayout(self)
+
+        self.view = QTextBrowser()
+        self.view.setStyleSheet(
+            "QTextBrowser{background:%s;border:1px solid %s;"
+            "border-radius:8px;padding:10px;font-size:13px;}"
+            % (theme.CARD, theme.BORDER))
+        root.addWidget(self.view, 1)
+
+        row = QHBoxLayout()
+        open_dir = QPushButton("打开数据文件夹")
+        open_dir.setObjectName("ghost")
+        open_dir.setCursor(Qt.PointingHandCursor)
+        open_dir.clicked.connect(lambda: os.startfile(config.BASE_DIR))
+        row.addWidget(open_dir)
+        row.addStretch(1)
+
+        refresh = QPushButton("刷新")
+        refresh.setObjectName("ghost")
+        refresh.setCursor(Qt.PointingHandCursor)
+        refresh.clicked.connect(self._render)
+        row.addWidget(refresh)
+
+        close = QPushButton("关闭")
+        close.setObjectName("primary")
+        close.setCursor(Qt.PointingHandCursor)
+        close.clicked.connect(self.accept)
+        row.addWidget(close)
+        root.addLayout(row)
+
+    @staticmethod
+    def _bars():
+        import activity as A
+        rows = A.durations()
+        if not rows:
+            return ('<div style="color:%s;font-size:12px;">还没攒够数据。'
+                    '它每隔半分钟看一眼屏幕，看够一会儿这里就会有数了。</div>'
+                    % theme.TEXT_SUB)
+        top = max(v for _, v in rows) or 1
+        out = []
+        for name, sec in rows[:12]:
+            pct = max(4, int(100.0 * sec / top))
+            out.append(
+                '<table width="100%%" cellspacing="0" cellpadding="0" '
+                'style="margin:0 0 5px 0;"><tr>'
+                '<td width="72" style="font-size:12px;">%s</td>'
+                '<td><table width="100%%" cellspacing="0" cellpadding="0"><tr>'
+                '<td bgcolor="%s" width="%d%%" height="10"></td>'
+                '<td bgcolor="%s" height="10"></td>'
+                '</tr></table></td>'
+                '<td width="84" align="right" style="font-size:11px;color:%s;">'
+                '%s</td></tr></table>'
+                % (html.escape(name), theme.BRAND, pct, "#EDF1F6",
+                   theme.TEXT_SUB, html.escape(A.human(sec))))
+        return "".join(out)
+
+    def _render(self):
+        import activity as A
+        day = datetime.now().strftime("%Y-%m-%d")
+        summary = A.today_summary()
+        if summary:
+            body = "".join(
+                '<div style="margin:2px 0;">%s</div>' % html.escape(ln.strip())
+                for ln in summary.splitlines() if ln.strip())
+        else:
+            body = ('<div style="color:%s;font-size:12px;">'
+                    '还没归纳出要点。攒够约 15 分钟的活动就会自动整理一次。</div>'
+                    % theme.TEXT_SUB)
+
+        old = A.archive_recent(6)
+        # 档案里第一条通常就是今天，避免和上面重复
+        if old.startswith("## " + day):
+            parts = old.split("\n\n", 1)
+            old = parts[1] if len(parts) > 1 else ""
+        old_html = ""
+        if old.strip():
+            old_html = (
+                '<div style="font-size:12px;color:%s;margin:18px 0 6px 0;">'
+                '前几天</div><pre style="font-family:Microsoft YaHei;'
+                'font-size:12px;color:%s;white-space:pre-wrap;margin:0;">%s</pre>'
+                % (theme.TEXT_SUB, theme.TEXT, html.escape(old.strip())))
+
+        self.view.setHtml(
+            '<div style="font-family:Microsoft YaHei;">'
+            '<div style="font-size:15px;font-weight:600;">今天都干了什么 · %s</div>'
+            '<div style="color:%s;font-size:11px;margin:5px 0 14px 0;">'
+            '它每隔半分钟看一眼屏幕，把这些片段的时间加起来。'
+            '只在电脑前的时间才算数。</div>'
+            '<div style="font-size:12px;color:%s;margin-bottom:6px;">耗时排行</div>'
+            '%s'
+            '<div style="font-size:12px;color:%s;margin:18px 0 6px 0;">今天做了什么</div>'
+            '%s%s'
+            '</div>'
+            % (day, theme.TEXT_SUB, theme.TEXT_SUB, self._bars(),
+               theme.TEXT_SUB, body, old_html))
+        self.view.verticalScrollBar().setValue(0)

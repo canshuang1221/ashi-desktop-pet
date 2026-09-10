@@ -679,6 +679,9 @@ class App:
 
     def _on_sense(self, text, image):
         self.sensing = False
+        # 不管这次说没说话，都把「距上次感知的这段时间」记到当前活动上。
+        # 只在它开口时才计时的话，时长会被严重低估（它可能好几分钟才说一句）。
+        activity.tick()
         if not text or text.startswith("[ERROR]") or "[SKIP]" in text:
             return
         # 先把活动标签摘出来记账（这是「今日足迹」的数据来源，与用户说不说话无关）

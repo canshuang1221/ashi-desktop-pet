@@ -362,8 +362,7 @@ class Settings(QDialog):
         self.btn_activity = QPushButton("今天都干了什么（今日足迹）")
         self.btn_activity.setObjectName("ghost")
         self.btn_activity.setCursor(Qt.PointingHandCursor)
-        self.btn_activity.clicked.connect(
-            lambda: self._open_dir(os.path.join(config.BASE_DIR, "activity")))
+        self.btn_activity.clicked.connect(self._open_activity)
 
         self.btn_shots = QPushButton("最近的截图（它看到了啥）")
         self.btn_shots.setObjectName("ghost")
@@ -414,6 +413,17 @@ class Settings(QDialog):
         if brain is not None:
             brain.clear_user_memo()
         QMessageBox.information(self, "完成", "长期记忆已清空。")
+
+    def _open_activity(self):
+        """弹窗看今日足迹：耗时排行 + 要点总结。
+
+        以前是直接打开 activity/ 文件夹，用户只看到一堆 json，等于没看到内容。
+        """
+        from history import Activity
+        self._act_win = Activity(self.cfg)
+        self._act_win.show()
+        self._act_win.raise_()
+        self._act_win.activateWindow()
 
     def _open_memo(self):
         """弹窗看长期记忆。

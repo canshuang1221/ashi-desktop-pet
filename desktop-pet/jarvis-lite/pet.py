@@ -316,9 +316,15 @@ class Pet(QWidget):
         cx = self.W / 2
         cy = 92 + bob
         now = time.time()
+        # 立绘的眨眼帧幅度比矢量形象大得多（整只眼睛收成一条弧、嘴角还带笑），
+        # 只留 0.13 秒会像掉了一帧，看着不连贯，所以立绘这一下留久一点、间隔也拉开。
+        if self._skin in self.IMAGE_SKINS:
+            hold, gap = 0.30, 3.6
+        else:
+            hold, gap = 0.16, 2.6
         if now > self._blink_at:
-            self._blink_until = now + 0.13
-            self._blink_at = now + 2.5 + (now % 3)
+            self._blink_until = now + hold
+            self._blink_at = now + gap + (now % 3)
         blinking = now < self._blink_until
         gr, gg, gb = self.GLOW_RGB.get(self._skin, self.GLOW_RGB["robot"])
         glow_c = QColor(gr, gg, gb)
