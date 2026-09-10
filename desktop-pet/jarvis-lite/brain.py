@@ -31,6 +31,97 @@ class Brain:
         self.cfg = cfg
         self.history = []
         self._load_history()
+        self.user_memo = self._load_memo()
+
+    # ---------- 关于用户的长期记忆 ----------
+    # 和「对话记录」不是一回事：对话记录是流水账（按天、只留最近 60 条），
+    # 这里是**提炼过的事实**（他喜欢什么、在做什么、反感什么），
+    # 会一直拼在 system 里，所以小贾越用越懂他。
+    def _load_memo(self):
+        try:
+            with open(config.USER_MEMO_PATH, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except Exception:
+            return ""
+
+    def save_memo(self, text):
+        self.user_memo = (text or "").strip()
+        try:
+            with open(config.USER_MEMO_PATH, "w", encoding="utf-8") as f:
+                f.write(self.user_memo + "\n")
+        except Exception:
+            pass
+
+    def clear_user_memo(self):
+        self.save_memo("")
+
+    def _memo_lines(self):
+        return [ln.strip() for ln in (self.user_memo or "").splitlines()
+                if ln.strip().startswith("-")]
+
+    def memo_block(self):
+        if not self.user_memo:
+            return ""
+        return "\n\n【你记得的关于他的事（长期记忆，自然用上，不要生硬复述）】\n" + self.user_memo
+
+    def learn_about_user(self, user_text, reply):
+        """从一轮对话里提炼「关于用户的长期事实」并合并进记忆。
+
+        返回新增条数。失败不抛异常（记忆是加分项，不该影响聊天）。
+        """
+        user_text = (user_text or "").strip()
+        reply = (reply or "").strip()
+        if len(user_text) < 4 or not reply:
+            return 0
+        ask = (
+            "下面是你和用户的一段对话。请提取「关于用户这个人值得长期记住的事实」，"
+            "每条一行、以「- 」开头，要具体（喜好、习惯、正在做什么、在意什么、反感什么、"
+            "说话风格偏好）。只写有长期价值的事实，不要写这次对话的临时内容，"
+            "也不要重复【已有记忆】里已经有的。没有新东西就只回复「无」。\n\n"
+            "【已有记忆】\n%s\n\n【这次对话】\n用户：%s\n你：%s\n"
+            % (self.user_memo or "(空)", user_text[:600], reply[:600])
+        )
+        try:
+            out = self.once(ask, record=False, fresh=True, kind="memo")
+        except Exception:
+            return 0
+        if not out or "无" in out[:6] or out.startswith("[ERROR]"):
+            return 0
+        old = self._memo_lines()
+        old_key = [self._norm(x) for x in old]
+        added = []
+        for ln in out.splitlines():
+            ln = ln.strip()
+            if not ln.startswith("-"):
+                continue
+            ln = "- " + ln.lstrip("-").strip()
+            body = self._norm(ln)
+            if len(body) < 4:
+                continue
+            # 和已有条目太像就不加，避免同一个事实反复堆
+            if any(self._overlap(body, k) >= 0.5 for k in old_key):
+                continue
+            added.append(ln)
+        if not added:
+            return 0
+        merged = old + added
+        merged = merged[-self.MAX_MEMO_LINES:]
+        self.save_memo("\n".join(merged))
+        return len(added)
+
+    @staticmethod
+    def _norm(s):
+        return "".join(ch for ch in s if ch.strip() and ch not in "-：:，,。.、！!？?")
+
+    @staticmethod
+    def _overlap(a, b):
+        g = {a[i:i + 2] for i in range(max(0, len(a) - 1))}
+        h = {b[i:i + 2] for i in range(max(0, len(b) - 1))}
+        if not g or not h:
+            return 0.0
+        return len(g & h) / float(len(g | h))
+
+    MAX_MEMO_LINES = 40
 
     # ---------- 配置 ----------
     def reload(self, cfg):
@@ -51,7 +142,9 @@ class Brain:
 
     # ---------- 对话 ----------
     def _build(self, user_text, image_b64=None, fresh=False):
-        msgs = [{"role": "system", "content": self.cfg["persona"]}]
+        # 长期记忆拼在 system 里：不占历史窗口，也不会被 60 条上限滚掉
+        msgs = [{"role": "system",
+                 "content": self.cfg["persona"] + self.memo_block()}]
         if not fresh:
             msgs += self.history[-12:]
         if image_b64:

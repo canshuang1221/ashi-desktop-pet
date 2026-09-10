@@ -35,6 +35,27 @@ class StreamWorker(QThread):
             self.delta.emit(chunk)
 
 
+class MemoWorker(QThread):
+    """聊完一轮后，异步提炼「关于用户的长期记忆」。
+
+    单独开线程避免拖慢界面；失败静默（记忆是加分项，不该影响聊天）。
+    """
+
+    def __init__(self, brain, user_text, reply):
+        super().__init__()
+        self.brain, self.user_text, self.reply = brain, user_text, reply
+
+    def run(self):
+        try:
+            n = self.brain.learn_about_user(self.user_text, self.reply)
+            if n:
+                with open(os.path.join(config.BASE_DIR, "log.txt"), "a",
+                          encoding="utf-8") as f:
+                    f.write("[memo] 新记住 %d 条关于用户的事\n" % n)
+        except Exception:
+            pass
+
+
 class ChatWindow(QWidget):
     """桌宠旁的对话面板。"""
 
@@ -44,6 +65,7 @@ class ChatWindow(QWidget):
         self.msgs = []          # [(who, text, is_notice)]，微信式气泡按序渲染
         self._pt = 12
         self.worker = None
+        self._memo = None       # 提炼长期记忆的后台线程
         self.note_worker = None
         self.drag = None
 
@@ -313,8 +335,17 @@ class ChatWindow(QWidget):
 
     def _on_done(self):
         plain = self.msgs[-1][1].strip() if self.msgs else ""
+        last_user = ""
+        for who, t, _n in reversed(self.msgs[:-1]):
+            if who == "你":
+                last_user = t
+                break
         self._finish()
         self.bubble.say(self.pet, plain[:60] + ("…" if len(plain) > 60 else ""), 8000)
+        if last_user and plain:
+            # 聊完一轮 → 丢到后台去提炼长期记忆，别卡界面
+            self._memo = MemoWorker(self.brain, last_user, plain)
+            self._memo.start()
 
     def _finish(self):
         self.pet.set_talking(False)

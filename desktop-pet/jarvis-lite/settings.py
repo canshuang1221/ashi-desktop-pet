@@ -1,13 +1,15 @@
+import os
 import time
 
 import requests
 from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout,
-    QLineEdit, QPlainTextEdit, QPushButton, QSlider, QSpinBox,
+    QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QSlider, QSpinBox,
     QTabWidget, QVBoxLayout, QWidget, QLabel,
 )
 
+import config
 import pet as pet_mod
 import theme
 
@@ -102,6 +104,7 @@ class Settings(QDialog):
         tabs.addTab(self._tab_api(), "API")
         tabs.addTab(self._tab_basic(), "基本设置")
         tabs.addTab(self._tab_ui(), "外观")
+        tabs.addTab(self._tab_data(), "数据")
 
         row = QHBoxLayout()
         save = QPushButton("保存")
@@ -306,6 +309,85 @@ class Settings(QDialog):
         tip.setWordWrap(True)
         f.addRow("", tip)
         return w
+
+    # ---------- 数据 ----------
+    def _tab_data(self):
+        w = QWidget()
+        f = QFormLayout(w)
+        f.setSpacing(10)
+
+        tip = QLabel(
+            "两件事别再搞混了：\n"
+            "· 对话记录：按天的聊天流水账，只保留最近 60 条，用来当聊天上下文。\n"
+            "· 长期记忆：小贾从聊天里提炼出「关于你这个人」的事实，"
+            "会一直带在提示里，所以越用越懂你。\n"
+            "清空都会先弹确认，不放托盘里就是为了防误触。")
+        tip.setStyleSheet("color:%s;font-size:12px;" % theme.TEXT_SUB)
+        tip.setWordWrap(True)
+
+        self.btn_clear_chat = QPushButton("清空对话记录")
+        self.btn_clear_chat.setObjectName("ghost")
+        self.btn_clear_chat.setCursor(Qt.PointingHandCursor)
+        self.btn_clear_chat.clicked.connect(self._do_clear_chat)
+
+        self.btn_clear_memo = QPushButton("清空小贾对我的长期记忆")
+        self.btn_clear_memo.setObjectName("ghost")
+        self.btn_clear_memo.setCursor(Qt.PointingHandCursor)
+        self.btn_clear_memo.clicked.connect(self._do_clear_memo)
+
+        self.btn_open_memo = QPushButton("打开长期记忆文件（看得见、可手改）")
+        self.btn_open_memo.setObjectName("ghost")
+        self.btn_open_memo.setCursor(Qt.PointingHandCursor)
+        self.btn_open_memo.clicked.connect(self._open_memo)
+
+        self.btn_open_dir = QPushButton("打开数据文件夹")
+        self.btn_open_dir.setObjectName("ghost")
+        self.btn_open_dir.setCursor(Qt.PointingHandCursor)
+        self.btn_open_dir.clicked.connect(lambda: os.startfile(config.BASE_DIR))
+
+        f.addRow("", tip)
+        f.addRow("", self.btn_clear_chat)
+        f.addRow("", self.btn_clear_memo)
+        f.addRow("", self.btn_open_memo)
+        f.addRow("", self.btn_open_dir)
+        return w
+
+    def _brain(self):
+        """取到 brain（挂在对话面板上）；拿不到就返回 None。"""
+        return getattr(self.chat, "brain", None)
+
+    def _do_clear_chat(self):
+        if QMessageBox.question(
+                self, "确认清空对话记录",
+                "清空全部对话流水账？（长期记忆不受影响）",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        brain = self._brain()
+        if brain is not None:
+            brain.clear_history()
+        if self.chat is not None:
+            self.chat.clear()
+        QMessageBox.information(self, "完成", "对话记录已清空。")
+
+    def _do_clear_memo(self):
+        if QMessageBox.question(
+                self, "确认清空长期记忆",
+                "清空小贾提炼的、关于你的长期记忆？\n（对话记录不受影响）",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        brain = self._brain()
+        if brain is not None:
+            brain.clear_user_memo()
+        QMessageBox.information(self, "完成", "长期记忆已清空。")
+
+    def _open_memo(self):
+        brain = self._brain()
+        if brain is not None and not os.path.exists(config.USER_MEMO_PATH):
+            brain.save_memo("")
+        try:
+            os.startfile(config.USER_MEMO_PATH)
+        except Exception as e:
+            QMessageBox.warning(self, "打不开", str(e)[:120])
 
     # ---------- 滑条实时预览 ----------
     def _scale_live(self, v):

@@ -228,7 +228,7 @@ class Pet(QWidget):
         "pic_cat": ("立绘 · 猫耳少女", "pic_cat", "cat"),
         "pic_fox": ("立绘 · 狐耳少女", "pic_fox", "fox"),
         "pic_panda": ("立绘 · 熊猫娘", "pic_panda", "panda"),
-        "pic_robot": ("立绘 · 机娘", "pic_robot", "robot"),
+        "pic_robot": ("立绘 · 红色机甲", "pic_robot", "robot"),
     }
     _img_cache = {}
 
