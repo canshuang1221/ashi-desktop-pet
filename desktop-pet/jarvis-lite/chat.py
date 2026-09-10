@@ -245,7 +245,11 @@ class ChatWindow(QWidget):
                 line += pt if ord(ch) > 0x2E80 else pt * 0.55
         w = max(64, min(300, int(max(max_line, line)) + 26))
         align = "right" if me else "left"
-        body = html.escape(text).replace("\n", "<br>") or "&nbsp;"
+        body = html.escape(text).replace("\n", "<br>")
+        if not body:
+            # 流式回复还没出字时先显示省略号：接口首字可能要等几十秒，
+            # 面板一片空白会让人以为没反应。
+            body = "&nbsp;" if me else "…"
         return (
             '<div align="%s" style="color:#9AA3AC;font-size:11px;'
             'margin:9px 4px 2px 4px;">%s</div>'

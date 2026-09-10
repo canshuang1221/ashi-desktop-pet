@@ -225,12 +225,19 @@ class Settings(QDialog):
         self.shot_quality.setRange(40, 95)
         self.shot_quality.setValue(int(self.cfg["sense"].get("shot_quality", 82)))
 
+        # 保留最近几张截图：只留一张的话，回头看「它当时看到了啥」就没依据了
+        self.keep_shots = QSpinBox()
+        self.keep_shots.setRange(0, 30)
+        self.keep_shots.setSuffix(" 张")
+        self.keep_shots.setValue(int(self.cfg["sense"].get("keep_shots", 8)))
+
         f.addRow("人设", self.persona)
         f.addRow("看屏间隔", self.interval)
         f.addRow("", self.sense)
         f.addRow("截图范围", self.shot_scope)
         f.addRow("截图清晰度", self.shot_scale)
         f.addRow("截图画质", self.shot_quality)
+        f.addRow("保留截图", self.keep_shots)
         f.addRow("搭话间隔", self.tick_interval)
         f.addRow("", self.tick)
         f.addRow("空闲阈值", self.idle_thr)
@@ -317,10 +324,11 @@ class Settings(QDialog):
         f.setSpacing(10)
 
         tip = QLabel(
-            "两件事别再搞混了：\n"
+            "三样东西别再搞混了：\n"
             "· 对话记录：按天的聊天流水账，只保留最近 60 条，用来当聊天上下文。\n"
-            "· 长期记忆：小贾从聊天里提炼出「关于你这个人」的事实，"
-            "会一直带在提示里，所以越用越懂你。\n"
+            "· 长期记忆：小贾从聊天里提炼出「关于你这个人」的事实，越用越懂你。\n"
+            "· 今日足迹：小贾从屏幕里看到的你一天在干什么（看视频/工作/摸鱼/打游戏…），"
+            "不需要你开口说话也能积累。\n"
             "清空都会先弹确认，不放托盘里就是为了防误触。")
         tip.setStyleSheet("color:%s;font-size:12px;" % theme.TEXT_SUB)
         tip.setWordWrap(True)
@@ -345,12 +353,33 @@ class Settings(QDialog):
         self.btn_open_dir.setCursor(Qt.PointingHandCursor)
         self.btn_open_dir.clicked.connect(lambda: os.startfile(config.BASE_DIR))
 
+        self.btn_activity = QPushButton("今天都干了什么（今日足迹）")
+        self.btn_activity.setObjectName("ghost")
+        self.btn_activity.setCursor(Qt.PointingHandCursor)
+        self.btn_activity.clicked.connect(
+            lambda: self._open_dir(os.path.join(config.BASE_DIR, "activity")))
+
+        self.btn_shots = QPushButton("最近的截图（它看到了啥）")
+        self.btn_shots.setObjectName("ghost")
+        self.btn_shots.setCursor(Qt.PointingHandCursor)
+        self.btn_shots.clicked.connect(
+            lambda: self._open_dir(os.path.join(config.BASE_DIR, "shots")))
+
         f.addRow("", tip)
         f.addRow("", self.btn_clear_chat)
         f.addRow("", self.btn_clear_memo)
         f.addRow("", self.btn_open_memo)
+        f.addRow("", self.btn_activity)
+        f.addRow("", self.btn_shots)
         f.addRow("", self.btn_open_dir)
         return w
+
+    def _open_dir(self, d):
+        try:
+            os.makedirs(d, exist_ok=True)
+            os.startfile(d)
+        except Exception as e:
+            QMessageBox.warning(self, "打不开", str(e)[:120])
 
     def _brain(self):
         """取到 brain（挂在对话面板上）；拿不到就返回 None。"""
@@ -490,6 +519,7 @@ class Settings(QDialog):
         self.cfg["sense"]["shot_scope"] = self.shot_scope.currentData() or "window"
         self.cfg["sense"]["shot_scale"] = self.shot_scale.value() / 100.0
         self.cfg["sense"]["shot_quality"] = self.shot_quality.value()
+        self.cfg["sense"]["keep_shots"] = self.keep_shots.value()
         self.cfg["tick"]["enabled"] = self.tick.isChecked()
         self.cfg["tick"]["interval_sec"] = self.tick_interval.value()
         self.cfg["idle"]["enabled"] = self.idle.isChecked()

@@ -7,6 +7,7 @@ from datetime import datetime
 import requests
 
 import config
+import activity
 
 
 def _short_user(kind, text):
@@ -142,9 +143,10 @@ class Brain:
 
     # ---------- 对话 ----------
     def _build(self, user_text, image_b64=None, fresh=False):
-        # 长期记忆拼在 system 里：不占历史窗口，也不会被 60 条上限滚掉
+        # 长期记忆 + 今日足迹都拼在 system 里：不占历史窗口，也不会被 60 条上限滚掉
         msgs = [{"role": "system",
-                 "content": self.cfg["persona"] + self.memo_block()}]
+                 "content": self.cfg["persona"] + self.memo_block()
+                 + activity.block()}]
         if not fresh:
             msgs += self.history[-12:]
         if image_b64:

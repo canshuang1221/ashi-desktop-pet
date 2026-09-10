@@ -216,8 +216,9 @@ class Pet(QWidget):
         self._slide(self._dock_target(self._dock_side))
 
     # ---------- 外观 ----------
-    # 矢量画法的形象（立绘见下面的 IMAGE_SKINS，由 available() 合并）
-    SKINS = ("cat", "shiba", "fox", "bunny", "panda", "tiger", "robot", "slime")
+    # 矢量画法的形象。用户反馈简笔画不好看，可选列表只留两个当兜底
+    # （立绘素材缺失时用它顶上，保证程序不会画不出来）
+    SKINS = ("cat", "slime")
 
     # ---- 立绘（图片素材）形象 ----
     # 素材放 assets/ 下、PNG 带透明通道，命名 <base>_idle.png / _blink.png / _talk.png。

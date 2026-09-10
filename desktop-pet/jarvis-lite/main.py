@@ -1,6 +1,7 @@
 import ctypes
 import os
 import random
+import re
 import sys
 from collections import deque
 from ctypes import wintypes
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 import brain as brain_mod
 import config
+import activity
 from brain import Brain
 from chat import ChatWindow
 from history import History
@@ -133,6 +135,30 @@ class FixWorker(QThread):
         self.got.emit(out, self.image)
 
 
+class ActivityWorker(QThread):
+    """把攒下来的活动标签归纳成「今天干了什么」。
+
+    后台跑，避免那一次额外的接口调用卡住界面。
+    """
+
+    def __init__(self, brain):
+        super().__init__()
+        self.brain = brain
+
+    def run(self):
+        try:
+            n = activity.count()
+            out = self.brain.once(activity.summary_prompt(), record=False,
+                                  fresh=True, kind="activity")
+            k = activity.save_summary(out, n)
+            if k:
+                with open(os.path.join(config.BASE_DIR, "log.txt"), "a",
+                          encoding="utf-8") as f:
+                    f.write("[activity] 今日足迹已归纳 %d 条\n" % k)
+        except Exception:
+            pass
+
+
 class App:
     def __init__(self):
         self.cfg = config.load()
@@ -143,6 +169,8 @@ class App:
         self._tick_worker = None
         self._fix = None          # 改写「助手口气」的后台线程
         self._fixing = False
+        self._act = None          # 归纳「今日足迹」的后台线程
+        self._summarizing = False
 
         self.app = QApplication(sys.argv)
         self.app.setQuitOnLastWindowClosed(False)
@@ -444,6 +472,71 @@ class App:
             return True                      # 别点名，说的是「这事儿」不是「你」
         return any(w in text for w in App.BAN_WORDS)
 
+    # 允许的活动标签（和 config 里感知提示词给模型的列表保持一致）
+    ACTIVITY_TAGS = ("看视频", "看直播", "听音乐", "写代码", "剪视频", "修图",
+                     "打游戏", "看文档", "写文档", "聊天", "逛网页", "买东西",
+                     "学习", "摸鱼", "发呆", "其它")
+
+    @classmethod
+    def _split_activity(cls, text):
+        """把回复开头的活动标签拆出来，剩下的才是要说的话。
+
+        实测模型常常只写 [修图] 而漏掉「活动:」前缀，所以前缀可省；
+        但标签必须落在允许列表里，免得把正文里的 [xxx] 误当标签。
+        """
+        text = (text or "").strip()
+        m = re.match(
+            r"^\s*[\[【]\s*(?:活动\s*[:：]\s*)?([^\]】]{1,8})\s*[\]】]\s*(.*)$",
+            text, re.S)
+        if not m:
+            return "", text
+        tag = m.group(1).strip()
+        if tag not in cls.ACTIVITY_TAGS:
+            # 不在允许列表里：只有明确带「活动:」前缀时才认
+            if not re.match(r"^\s*[\[【]\s*活动", text):
+                return "", text
+        return tag, m.group(2).strip()
+
+    def _note_activity(self, tag):
+        """记一条足迹；攒够了就后台归纳一次。"""
+        if not tag:
+            return
+        activity.add(tag)
+        if activity.need_summary() and not self._summarizing:
+            self._summarizing = True
+            self._act = ActivityWorker(self.brain)
+            self._act.finished.connect(self._activity_done)
+            self._act.start()
+
+    def _activity_done(self):
+        self._summarizing = False
+
+    def _save_shot(self, data_url, keep):
+        """把这次的截图存下来，只保留最近 keep 张（0 = 不保存）。
+
+        每次覆盖一张的话，回头看「它当时看到了啥」就没依据了；
+        留几张的体积也就 1MB 出头。
+        """
+        if not data_url or keep <= 0:
+            return
+        try:
+            import base64
+            import glob
+            d = os.path.join(config.BASE_DIR, "shots")
+            os.makedirs(d, exist_ok=True)
+            p = os.path.join(d, "shot_%s.jpg"
+                             % datetime.now().strftime("%Y%m%d-%H%M%S"))
+            with open(p, "wb") as f:
+                f.write(base64.b64decode(data_url.split(",", 1)[1]))
+            files = sorted(glob.glob(os.path.join(d, "shot_*.jpg")))
+            for old in files[:-int(keep)]:
+                try:
+                    os.remove(old)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     def _say_final(self, text, image):
         """最后的发出口：去重 + 助手口气双检，通过就弹气泡。"""
         text = (text or "").strip()
@@ -553,6 +646,7 @@ class App:
         scope = sense.get("shot_scope", "window")
         shot = brain_mod.grab_screen(scale=scale, quality=quality,
                                      foreground=(scope != "screen"))
+        self._save_shot(shot, sense.get("keep_shots", 8))
         prompt = self._vary(sense["prompt"])
         # 告诉它自己现在是什么样子，屏幕里那个卡通形象就是本尊，不是屏幕内容
         prompt += ("\n（你现在是「%s」的样子，画面里那个卡通形象就是你自己，"
@@ -568,7 +662,12 @@ class App:
         self.sensing = False
         if not text or text.startswith("[ERROR]") or "[SKIP]" in text:
             return
-        text = text.strip()
+        # 先把活动标签摘出来记账（这是「今日足迹」的数据来源，与用户说不说话无关）
+        tag, body = self._split_activity(text)
+        self._note_activity(tag)
+        text = body
+        if not text or "[SKIP]" in text:
+            return
         if self._too_similar(text):
             self._dbglog("skip repeat: %s" % text[:30])
             return
