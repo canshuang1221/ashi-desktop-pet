@@ -73,7 +73,7 @@ class Pet(QWidget):
         self._blink_until = 0
         self._top_at = 0.0        # 上次主动置顶的时刻（见 force_topmost）
         self._s = float(cfg["pet"].get("scale", 1.0))
-        self._skin = cfg["pet"].get("skin", "cat")
+        self._skin = cfg["pet"].get("skin", "pic_fox")
         self._dock_side = None    # None / "left" / "right" / "top"
         self._home = None         # 未停靠时的完整位置
         self._anim = QVariantAnimation(self)

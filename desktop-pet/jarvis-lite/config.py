@@ -51,7 +51,9 @@ DEFAULT = {
         "scale": 1.0,
         "opacity": 0.96,
         "sound": False,
-        "skin": "cat",
+        # 默认形象：用立绘（狐耳少女）。矢量画法只是立绘素材缺失时的兜底，
+        # 观感差得远，新用户第一次打开看到的就是它，别改回矢量。
+        "skin": "pic_fox",
     },
     "sense": {
         "enabled": False,

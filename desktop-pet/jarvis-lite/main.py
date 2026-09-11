@@ -446,7 +446,7 @@ class App:
         config.save(cfg)
         self.brain.reload(cfg)
         self.pet.apply_scale(cfg["pet"].get("scale", 1.0))
-        self.pet.set_skin(cfg["pet"].get("skin", "cat"))
+        self.pet.set_skin(cfg["pet"].get("skin", "pic_fox"))
         self.chat.apply_font(cfg.get("ui", {}).get("font_size", 12))
         self._refresh_name()
         self._sync_timer()
