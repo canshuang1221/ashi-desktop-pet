@@ -31,7 +31,7 @@ def edge_visible(scale=1.0):
     return max(34, int((Pet.W - BODY_R + PEEK) * scale))
 
 
-def force_topmost(win):
+def force_topmost(win, on=True):
     """把这个窗口重新压到最上层，且不抢焦点。
 
     为什么要主动做一次：Qt 的 WindowStaysOnTopHint 只是创建时的标记，
@@ -56,7 +56,10 @@ def force_topmost(win):
         ]
         u.SetWindowPos.restype = wintypes.BOOL
         SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x0001, 0x0002, 0x0010
-        u.SetWindowPos(int(win.winId()), -1, 0, 0, 0, 0,
+        HWND_TOPMOST, HWND_NOTOPMOST = -1, -2
+        u.SetWindowPos(int(win.winId()),
+                       HWND_TOPMOST if on else HWND_NOTOPMOST,
+                       0, 0, 0, 0,
                        SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
     except Exception:
         pass
@@ -107,9 +110,37 @@ class Pet(QWidget):
         # 会改变窗口状态、引发重排乃至消息泵重入，Qt 不保证这种用法安全
         # —— 实测疑似就是崩溃的元凶（气泡弹出时还会对同一窗口再调一次）。
         # 挪到独立定时器做同样的事，就没有重入风险了。
+        self._top_suspended = False     # 菜单弹出期间挂起抢置顶（见 suspend_topmost）
         self._top_timer = QTimer(self)
-        self._top_timer.timeout.connect(lambda: force_topmost(self))
-        self._top_timer.start(300)
+        self._top_timer.timeout.connect(self._reassert_topmost)
+        self._top_timer.start(self.TOP_INTERVAL)
+
+    # ---------- 置顶 ----------
+    # 为什么从 300ms 放宽到 2000ms：原来那么高频是为了抢英雄联盟的 z 序，
+    # 但 361 次采样里只有 8% 的时候抢到了它上面 —— 基本没用。
+    # 而副作用很实在：桌宠是 TOPMOST、弹出的菜单不是，于是菜单刚弹出来
+    # 就被顶回下面，表现就是「右键看不到菜单 / 托盘点不动」。
+    # 现在改成低频兜底（切回桌面后还能重新浮上来），并在菜单期间完全让路。
+    TOP_INTERVAL = 2000
+
+    def _reassert_topmost(self):
+        if not self._top_suspended:
+            force_topmost(self)
+
+    def suspend_topmost(self):
+        """菜单弹出前调用：停掉抢置顶，并暂时取消置顶。
+
+        必须这么做 —— 否则桌宠很快又回到最上层，把菜单压在自己下面。
+        """
+        self._top_suspended = True
+        self._top_timer.stop()
+        force_topmost(self, False)
+
+    def resume_topmost(self):
+        self._top_suspended = False
+        force_topmost(self, True)
+        if not self._top_timer.isActive():
+            self._top_timer.start(self.TOP_INTERVAL)
 
     def apply_scale(self, s):
         """设置里改了缩放立即生效，不用重启。"""
@@ -852,6 +883,7 @@ class Bubble(QWidget):
         self.maxw = 260
         self._image = None      # 产生这句话时的截图（可继续聊）
         self._clickable = False
+        self._top_suspended = False   # 菜单弹出时让路，见 suspend_topmost
         self._ms = 6000         # 本次气泡应停留的时长
         self._remain = 0        # 悬停暂停时的剩余时长
         self._pet = None        # 绑定桌宠后，桌宠一动气泡就跟着走
@@ -875,6 +907,16 @@ class Bubble(QWidget):
             max(9, min(18, int(ui.get("font_size", 12)))),
             max(180, min(420, int(ui.get("bubble_width", 260)))),
         )
+
+    def suspend_topmost(self):
+        """菜单弹出前让路 —— 气泡也是 TOPMOST，同样会把菜单压住。"""
+        self._top_suspended = True
+        force_topmost(self, False)
+
+    def resume_topmost(self):
+        self._top_suspended = False
+        if self.isVisible():
+            force_topmost(self, True)
 
     def say(self, pet, text, ms=6000, image=None, clickable=False):
         # 每次弹气泡都留痕（毫秒级），方便排查「连弹两个」这类时序问题
@@ -915,9 +957,11 @@ class Bubble(QWidget):
         self.show()
         self.raise_()
         # 说话时重新声明置顶，免得气泡被压在游戏或全屏窗口下面；
-        # 顺便把桌宠本体也顶一次（实测本体比气泡更容易被游戏的置顶挤下去）
-        force_topmost(self)
-        if pet is not None:
+        # 顺便把桌宠本体也顶一次（实测本体比气泡更容易被游戏的置顶挤下去）。
+        # 但菜单开着的时候要让路，否则会把菜单压在自己下面。
+        if not self._top_suspended:
+            force_topmost(self)
+        if pet is not None and not getattr(pet, "_top_suspended", False):
             force_topmost(pet)
         self.update()
         self._ms = ms

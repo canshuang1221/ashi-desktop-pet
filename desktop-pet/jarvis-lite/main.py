@@ -3,6 +3,7 @@ import os
 import random
 import re
 import sys
+import time
 from collections import deque
 from ctypes import wintypes
 from datetime import datetime
@@ -272,17 +273,32 @@ class App:
             self.bubble.say(self.pet, "Ctrl+M 被别的程序占了，用托盘图标唤我", 6000)
 
     # ---------- 行为 ----------
+    # 菜单最多允许开着这么久（秒），超时视为卡死
+    MENU_LOCK_TIMEOUT = 20
+
     def on_action(self, kind, payload):
         if kind == "menu":
             # 重入保护：menu.exec() 是阻塞式模态调用，而桌宠本体右键与托盘右键
             # 走的是同一个入口。连点两次会嵌套 exec，两个菜单事件循环互锁，
             # 表现就是「托盘右键点了没反应、菜单再也不弹」。
             if self.__dict__.get("_menu_open"):
-                return
+                # 超时自愈：exec() 万一真回不来，也不能让菜单永久点不动
+                if (time.time() - self.__dict__.get("_menu_at", 0)
+                        < self.MENU_LOCK_TIMEOUT):
+                    return
+                self._dbglog("menu lock timeout -> force reset")
             self._menu_open = True
+            self._menu_at = time.time()
+            # 关键：菜单弹出期间让桌宠和气泡让出最上层。
+            # 它俩都是 TOPMOST 窗口而菜单不是 —— 不让路的话，菜单刚弹出来
+            # 就被顶回下面，表现就是「右键看不到菜单 / 托盘点不动」。
+            self.pet.suspend_topmost()
+            self.bubble.suspend_topmost()
             try:
                 self.tray.contextMenu().exec(payload)
             finally:
+                self.pet.resume_topmost()
+                self.bubble.resume_topmost()
                 self._menu_open = False
         elif kind == "toggle_sense":
             self.toggle_sense()
