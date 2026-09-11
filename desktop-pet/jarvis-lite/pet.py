@@ -45,10 +45,19 @@ def force_topmost(win):
     """
     try:
         import ctypes
+        from ctypes import wintypes
+        u = ctypes.windll.user32
+        # 显式声明参数类型：HWND 在 64 位下是指针宽度，不声明的话 ctypes
+        # 默认按 32 位 int 传参，句柄值可能被截断，于是置顶打到了错误的对象上。
+        u.SetWindowPos.argtypes = [
+            wintypes.HWND, wintypes.HWND,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_uint,
+        ]
+        u.SetWindowPos.restype = wintypes.BOOL
         SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x0001, 0x0002, 0x0010
-        ctypes.windll.user32.SetWindowPos(
-            int(win.winId()), -1, 0, 0, 0, 0,
-            SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
+        u.SetWindowPos(int(win.winId()), -1, 0, 0, 0, 0,
+                       SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
     except Exception:
         pass
 
@@ -71,7 +80,7 @@ class Pet(QWidget):
         self.drag = None
         self._blink_at = time.time() + 3
         self._blink_until = 0
-        self._top_at = 0.0        # 上次主动置顶的时刻（见 force_topmost）
+        # 主动置顶由 _top_timer 驱动（见 __init__ 末尾），不写在 paintEvent 里
         self._s = float(cfg["pet"].get("scale", 1.0))
         self._skin = cfg["pet"].get("skin", "pic_fox")
         self._dock_side = None    # None / "left" / "right" / "top"
@@ -92,6 +101,15 @@ class Pet(QWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
         self.timer.start(40)
+
+        # 主动置顶（每 0.3 秒抢一次 z 序，原因见 paintEvent 里的说明）。
+        # 为什么单独开定时器、不写在 paintEvent 里：在绘制回调中调 SetWindowPos
+        # 会改变窗口状态、引发重排乃至消息泵重入，Qt 不保证这种用法安全
+        # —— 实测疑似就是崩溃的元凶（气泡弹出时还会对同一窗口再调一次）。
+        # 挪到独立定时器做同样的事，就没有重入风险了。
+        self._top_timer = QTimer(self)
+        self._top_timer.timeout.connect(lambda: force_topmost(self))
+        self._top_timer.start(300)
 
     def apply_scale(self, s):
         """设置里改了缩放立即生效，不用重启。"""
@@ -350,14 +368,10 @@ class Pet(QWidget):
             self._blink_at = now + gap + (now % 3)
         blinking = now < self._blink_until
 
-        # 重新声明「置顶」。为什么频率这么高（0.3 秒一次）：
+        # 重新声明「置顶」的频率说明，见下面的 _top_timer：
         # 实测英雄联盟的"全屏"其实是一个 TOPMOST 的普通窗口（不是独占全屏），
         # 它自己也在反复抢最上层，于是变成一场 z 序拉锯战 —— 谁最后调用置顶谁在上面。
         # 原来 5 秒一次抢不过它，桌宠本体一直被压在下面（只有刚弹出的气泡能露脸）。
-        # SetWindowPos 开销极小，带上 SWP_NOACTIVATE 也不会抢焦点，所以放心高频。
-        if now - self._top_at > 0.3:
-            self._top_at = now
-            force_topmost(self)
         gr, gg, gb = self.GLOW_RGB.get(self._skin, self.GLOW_RGB["robot"])
         glow_c = QColor(gr, gg, gb)
 

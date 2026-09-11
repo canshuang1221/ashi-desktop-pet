@@ -5,7 +5,7 @@ import os
 import config
 import theme
 
-from PySide6.QtCore import QThread, Qt, Signal
+from PySide6.QtCore import QThread, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QTextCursor
 from PySide6.QtWidgets import (
     QApplication, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton,
@@ -67,6 +67,9 @@ class ChatWindow(QWidget):
         self.worker = None
         self._memo = None       # 提炼长期记忆的后台线程
         self.note_worker = None
+        # 线程的生命周期管理，见 _retire() 的说明——这两个列表是防崩溃的关键。
+        self._retired = []      # 已结束、但还不能放手的线程
+        self._memos = []        # 所有在跑的提炼线程（绝不能覆盖式赋值）
         self.drag = None
 
         self.setWindowTitle(cfg["pet"]["name"])
@@ -347,10 +350,50 @@ class ChatWindow(QWidget):
         self._finish()
         self.bubble.say(self.pet, plain[:60] + ("…" if len(plain) > 60 else ""), 8000)
         if last_user and plain:
-            # 聊完一轮 → 丢到后台去提炼长期记忆，别卡界面
-            self._memo = MemoWorker(self.brain, last_user, plain)
-            self._memo.start()
+            # 聊完一轮 → 丢到后台去提炼长期记忆，别卡界面。
+            # 用列表收集，不要覆盖式赋值 self._memo：上一轮那个可能还在跑
+            # （提炼要调一次接口，几十秒），覆盖会让它被 Python 回收，
+            # 而它持有的 QThread 还在运行 → 崩溃。
+            w = MemoWorker(self.brain, last_user, plain)
+            self._memos.append(w)
+            w.finished.connect(lambda: self._retire(w))
+            w.start()
+
+    def _retire(self, th):
+        """线程用完后先留着引用，过几秒再放手。
+
+        为什么不能当场丢：这些收尾大多是在线程自己的 finished 信号里执行的
+        （_on_done 就是 self.worker.finished 的槽）。此刻若让 Python 引用归零，
+        PySide 会连带析构它持有的那个 C++ QThread，而信号还在派发中 ——
+        实测这就是「聊完一轮就崩、日志里却没有任何报错」的原因。
+        """
+        if th is None:
+            return
+        try:
+            self._memos.remove(th)     # 可能来自提炼线程
+        except ValueError:
+            pass
+        self._retired.append(th)
+        QTimer.singleShot(3000, lambda: self._drop_retired(th))
+
+    def _drop_retired(self, th):
+        try:
+            self._retired.remove(th)
+        except ValueError:
+            pass
+
+    def shutdown(self):
+        """退出前等后台线程收尾，避免线程访问已经销毁的对象。"""
+        for th in list(self._memos) + list(self._retired):
+            try:
+                if th.isRunning():
+                    th.wait(2000)
+            except Exception:
+                pass
 
     def _finish(self):
         self.pet.set_talking(False)
-        self.worker = None
+        # 关键：不要写成 self.worker = None。此刻正处在它的 finished 信号里，
+        # 引用归零会让 PySide 析构掉那个还在派发信号的 QThread，直接崩溃。
+        old, self.worker = self.worker, None
+        self._retire(old)

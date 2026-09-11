@@ -763,10 +763,49 @@ class App:
         self.pet.save_pos()
         config.save(self.cfg)
         ctypes.windll.user32.UnregisterHotKey(None, 1)
+        self._wait_threads()
         self.tray.hide()
         self.app.quit()
+
+    def _wait_threads(self):
+        """退出前等后台线程收尾。
+
+        直接 quit 的话 Qt 会开始销毁对象，而线程可能还在跑（比如正在解析
+        接口返回），它回过来一访问已经析构的 QObject 就是硬崩溃 ——
+        没有 Traceback、日志也断在半截，非常难查。
+        """
+        for th in (self._worker, self._tick_worker, self._fix, self._act):
+            try:
+                if th is not None and th.isRunning():
+                    th.wait(2000)
+            except Exception:
+                pass
+        try:
+            self.chat.shutdown()
+        except Exception:
+            pass
+
+
+def _enable_crash_log():
+    """崩溃黑匣子：段错误 / Qt 硬崩溃时把 Python 调用栈写进 crash.log。
+
+    这一大类崩溃不会产生 Traceback，日志会直接断在半截（阿拾崩的那次就是
+    这样：最后一条是正常气泡，后面什么都没有），光看现有日志只能靠猜。
+    faulthandler 是标准库，接上零成本，下次再崩就能直接看到栈。
+    """
+    try:
+        import faulthandler
+        f = open(os.path.join(config.BASE_DIR, "crash.log"), "a", encoding="utf-8")
+        f.write("\n===== 启动 %s =====\n"
+                % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        f.flush()
+        faulthandler.enable(file=f, all_threads=True)
+        globals()["_crash_log_file"] = f    # 持有引用，否则文件被回收就失效了
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
     os.chdir(config.BASE_DIR)
+    _enable_crash_log()
     sys.exit(App().run())
