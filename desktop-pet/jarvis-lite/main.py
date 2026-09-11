@@ -18,6 +18,7 @@ import activity
 from brain import Brain
 from chat import ChatWindow
 from history import History, Memo
+import pet as pet_mod
 from pet import Bubble, Pet
 from settings import Settings
 
@@ -199,6 +200,13 @@ class App:
         self._tray()
         self._hotkey()
 
+        # 游戏模式自动检测：前台铺满整屏（游戏/全屏视频）就自动变小 + 穿透，
+        # 退出全屏再还原。用户一旦从托盘手动点过，就不再自动判断（见 toggle_game_mode）。
+        self._game_auto = True
+        self.game_timer = QTimer(self.app)
+        self.game_timer.timeout.connect(self._auto_game_mode)
+        self.game_timer.start(2000)
+
     def _already_running(self):
         """单实例锁：多开一个就多一倍弹窗和 token，必须挡住。
 
@@ -250,6 +258,10 @@ class App:
         add("对话 (Ctrl+M)", self.toggle_chat)
         add("历史记录", self.show_history)
         add("桌宠归位", self.reset_pet)
+        self.act_game = QAction("游戏模式（变小 · 半透明 · 可穿透）", self.app)
+        self.act_game.setCheckable(True)
+        self.act_game.triggered.connect(self.toggle_game_mode)
+        m.addAction(self.act_game)
         m.addSeparator()
         self.act_sense = QAction("暂停感知", self.app)
         self.act_sense.triggered.connect(self.toggle_sense)
@@ -264,6 +276,46 @@ class App:
         )
         self.tray.show()
         self._sync_sense_label()
+
+    # ---------- 游戏模式 ----------
+    def _auto_game_mode(self):
+        """前台铺满整屏就自动进游戏模式，退出全屏自动还原。
+
+        判据是「窗口铺满屏幕」而非「独占全屏」—— 英雄联盟的"全屏"实测就是
+        一个 1920x1080 的普通窗口，用这个判据正好能认出来。任务栏高度那点
+        差异（最大化窗口比全屏矮一截）会把普通最大化窗口排除掉。
+        """
+        if not self._game_auto:
+            return
+        want = pet_mod.foreground_is_fullscreen()
+        if want != self.pet.game_mode:
+            self._apply_game_mode(want, auto=True)
+
+    def toggle_game_mode(self, checked=None):
+        """托盘手动切换。
+
+        手动点过之后就不再做自动判断了 —— 否则你刚关掉、检测到全屏又给你
+        打开，两边打架。想恢复自动重启一下即可。
+        """
+        self._game_auto = False
+        on = bool(checked) if checked is not None else (not self.pet.game_mode)
+        self._apply_game_mode(on)
+        self.bubble.say(
+            self.pet,
+            "游戏模式：我先缩小躲到一边～" if on else "游戏模式关掉了",
+            2600)
+
+    def _apply_game_mode(self, on, auto=False):
+        if on == self.pet.game_mode:
+            return
+        self.pet.set_game_mode(on)
+        self.bubble.set_game_mode(on)
+        try:
+            self.act_game.setChecked(on)
+        except Exception:
+            pass
+        self._dbglog("game mode %s%s"
+                     % ("on" if on else "off", " (auto)" if auto else ""))
 
     def _hotkey(self):
         self.filter = HotkeyFilter(lambda _: self.toggle_chat())

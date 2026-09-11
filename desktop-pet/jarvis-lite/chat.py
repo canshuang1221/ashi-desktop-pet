@@ -62,6 +62,9 @@ class ChatWindow(QWidget):
     def __init__(self, brain, cfg, bubble, pet):
         super().__init__()
         self.brain, self.cfg, self.bubble, self.pet = brain, cfg, bubble, pet
+        # 名字统一取一次。用 .get 而不是直接下标：cfg 不完整时（比如被别的
+        # 模块构造出来做测试）不该直接 KeyError 崩掉窗口。
+        self._name = (cfg.get("pet") or {}).get("name") or "桌宠"
         self.msgs = []          # [(who, text, is_notice)]，微信式气泡按序渲染
         self._pt = 12
         self.worker = None
@@ -72,7 +75,7 @@ class ChatWindow(QWidget):
         self._memos = []        # 所有在跑的提炼线程（绝不能覆盖式赋值）
         self.drag = None
 
-        self.setWindowTitle(cfg["pet"]["name"])
+        self.setWindowTitle(self._name)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.resize(420, 560)
         self._build()
@@ -88,7 +91,7 @@ class ChatWindow(QWidget):
         root.setSpacing(8)
 
         bar = QHBoxLayout()
-        title = QLabel("%s · 桌宠对话" % self.cfg["pet"]["name"])
+        title = QLabel("%s · 桌宠对话" % self._name)
         title.setFont(QFont("Microsoft YaHei", 11, QFont.Medium))
         self.tip = QLabel("")
         self.tip.setStyleSheet("color:#888780;font-size:11px;")
@@ -203,7 +206,7 @@ class ChatWindow(QWidget):
                     notice=True)
             except Exception:
                 pass
-        self._append(self.cfg["pet"]["name"], bubble_text)
+        self._append(self._name, bubble_text)
         self._cursor_end()
         self.input.setFocus()
 
@@ -300,7 +303,7 @@ class ChatWindow(QWidget):
         self.input.clear()
         self.tip.setText("")
         self._append("你", text)
-        self._append(self.cfg["pet"]["name"], "")
+        self._append(self._name, "")
         self._cursor_end()
         self.pet.set_talking(True)
         # 来自气泡的会话：第一条消息自动带上截图和气泡那句话，且不掺历史

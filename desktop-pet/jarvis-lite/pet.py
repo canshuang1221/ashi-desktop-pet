@@ -62,6 +62,101 @@ def force_topmost(win):
         pass
 
 
+GWL_EXSTYLE = -20
+WS_EX_TRANSPARENT = 0x00000020      # 鼠标穿透：点击直接落到下层窗口
+WS_EX_LAYERED = 0x00080000          # 分层窗口（透明背景依赖它）
+
+
+def _ex_style_funcs():
+    """取 user32 里读写窗口扩展样式的两个函数，并声明好参数类型。
+
+    HWND 在 64 位下是指针宽度，不声明 argtypes 的话 ctypes 会按 32 位 int
+    传参，句柄可能被截断（操作打到别的窗口上）。
+    """
+    import ctypes
+    from ctypes import wintypes
+    u = ctypes.windll.user32
+    u.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+    u.GetWindowLongW.restype = ctypes.c_long
+    u.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
+    u.SetWindowLongW.restype = ctypes.c_long
+    return u
+
+
+def set_click_through(win, on=True):
+    """让窗口对鼠标「透明」：点它会穿透到下面的窗口。
+
+    游戏模式用。桌宠和气泡都加上之后，在游戏里点鼠标不会误点到它们身上
+    —— Bongo Cat 也是这么做的。代价是穿透期间点不到气泡、也拖不动桌宠，
+    所以只在游戏模式里开。
+    """
+    try:
+        u = _ex_style_funcs()
+        hwnd = int(win.winId())
+        ex = u.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        ex = (ex | WS_EX_TRANSPARENT | WS_EX_LAYERED) if on \
+            else (ex & ~WS_EX_TRANSPARENT)
+        u.SetWindowLongW(hwnd, GWL_EXSTYLE, ex)
+    except Exception:
+        pass
+
+
+def is_click_through(win):
+    try:
+        u = _ex_style_funcs()
+        return bool(u.GetWindowLongW(int(win.winId()), GWL_EXSTYLE)
+                    & WS_EX_TRANSPARENT)
+    except Exception:
+        return False
+
+
+def foreground_is_fullscreen():
+    """前台窗口是不是真的铺满整屏（游戏 / 全屏视频）。
+
+    用来判断要不要自动进游戏模式。两个要点：
+
+    1) 判据用「铺满屏幕」而不是「独占全屏」—— 英雄联盟的"全屏"实测就是
+       一个 1920x1080 的普通窗口，用这个判据才认得出。
+    2) 边界必须用 DWM 的「扩展边框」，不能用 GetWindowRect：后者包含最大化
+       窗口那圈不可见的边框，实测一个最大化的 Edge 会返回 1936x1066（比屏幕
+       还大），于是普通浏览器全屏也被当成游戏。扩展边框给的是肉眼可见的边界，
+       最大化窗口会比屏幕矮一条任务栏，正好被排除。
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+        u = ctypes.windll.user32
+        hwnd = u.GetForegroundWindow()
+        if not hwnd:
+            return False
+
+        r = wintypes.RECT()
+        ok = False
+        try:
+            dwm = ctypes.windll.dwmapi
+            dwm.DwmGetWindowAttribute.argtypes = [
+                wintypes.HWND, ctypes.c_uint, ctypes.c_void_p, ctypes.c_uint]
+            dwm.DwmGetWindowAttribute.restype = ctypes.c_long
+            ok = dwm.DwmGetWindowAttribute(
+                hwnd, 9,                      # DWMWA_EXTENDED_FRAME_BOUNDS
+                ctypes.byref(r), ctypes.sizeof(r)) == 0
+        except Exception:
+            ok = False
+        if not ok:                            # 老系统没有 DWM 时退回旧接口
+            u.GetWindowRect.argtypes = [wintypes.HWND,
+                                        ctypes.POINTER(wintypes.RECT)]
+            u.GetWindowRect.restype = wintypes.BOOL
+            ok = bool(u.GetWindowRect(hwnd, ctypes.byref(r)))
+        if not ok:
+            return False
+
+        sw = u.GetSystemMetrics(0)
+        sh = u.GetSystemMetrics(1)
+        return (r.right - r.left) >= sw * 0.98 and (r.bottom - r.top) >= sh * 0.98
+    except Exception:
+        return False
+
+
 class Pet(QWidget):
     """桌面常驻桌宠：可拖动、置顶、呼吸浮动、会眨眼。"""
 
@@ -111,6 +206,10 @@ class Pet(QWidget):
         self._top_timer.timeout.connect(lambda: force_topmost(self))
         self._top_timer.start(300)
 
+        # 游戏模式（见 set_game_mode）：变小 + 鼠标穿透
+        self.game_mode = False
+        self._scale_before_game = None
+
     def apply_scale(self, s):
         """设置里改了缩放立即生效，不用重启。"""
         self._s = max(0.4, min(2.5, float(s)))
@@ -118,6 +217,29 @@ class Pet(QWidget):
         if self._dock_side and self._home is not None:
             self.move(self._dock_target(self._dock_side))
         self.update()
+
+    # ---------- 游戏模式 ----------
+    def set_game_mode(self, on, factor=0.55):
+        """游戏模式：变小 + 鼠标穿透。
+
+        目的就是"玩游戏时别碍事"：个头缩一截、点在它身上也不会误触
+        （点击直接落到底下的游戏窗口）。退出时把原来的大小还回去。
+
+        穿透的代价：这期间点不到气泡、也拖不动桌宠。所以只在游戏模式里开，
+        要操作它就先用托盘菜单关掉游戏模式。
+        """
+        on = bool(on)
+        if on == self.game_mode:
+            return
+        self.game_mode = on
+        if on:
+            self._scale_before_game = self._s
+            self.apply_scale(self._s * factor)
+        else:
+            if self._scale_before_game:
+                self.apply_scale(self._scale_before_game)
+            self._scale_before_game = None
+        set_click_through(self, on)
 
     # ---------- 位置 ----------
     def _restore_pos(self):
@@ -852,6 +974,7 @@ class Bubble(QWidget):
         self.maxw = 260
         self._image = None      # 产生这句话时的截图（可继续聊）
         self._clickable = False
+        self.game_mode = False  # 游戏模式：半透明 + 鼠标穿透，见 set_game_mode
         self._ms = 6000         # 本次气泡应停留的时长
         self._remain = 0        # 悬停暂停时的剩余时长
         self._pet = None        # 绑定桌宠后，桌宠一动气泡就跟着走
@@ -919,9 +1042,29 @@ class Bubble(QWidget):
         force_topmost(self)
         if pet is not None:
             force_topmost(pet)
+        # 游戏模式下：气泡半透明 + 鼠标穿透。
+        # 每次弹出都要重设一遍 —— 窗口重新 show 之后扩展样式可能被系统重置。
+        if self.game_mode:
+            self.setWindowOpacity(self.GAME_OPACITY)
+            set_click_through(self, True)
         self.update()
         self._ms = ms
         self._timer.start(ms)
+
+    # ---------- 游戏模式 ----------
+    GAME_OPACITY = 0.55     # 游戏模式下的气泡透明度
+
+    def set_game_mode(self, on):
+        """游戏模式：气泡半透明 + 鼠标穿透。
+
+        穿透之后点在气泡上也不会误触（点击直接落到底下的游戏窗口），
+        所以游戏里不会因为气泡挡住操作。代价是点不开对话，要聊先关游戏模式。
+        """
+        on = bool(on)
+        self.game_mode = on
+        self.setWindowOpacity(self.GAME_OPACITY if on else 1.0)
+        if self.isVisible():
+            set_click_through(self, on)
 
     # ---------- 跟随桌宠 ----------
     def avoid(self, *widgets):
