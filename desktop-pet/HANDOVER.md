@@ -24,21 +24,40 @@ Windows 桌面 AI 桌宠，PySide6 写的。它会**看你屏幕**，用朋友�
 
 ---
 
-## 二、从哪个文件夹继续
+## 二、从哪个文件夹继续（★ 2026-09-13 已改：不再用副本）
 
 | 路径 | 用途 |
 |---|---|
-| `E:\WorkBuddy\Git` | **git 仓库根**（分支 `main`），源码在 `desktop-pet/ashi/` |
-| `C:\Users\46001\WorkBuddy\Worktrees\desktop-pet\main-733f0f98` | **开发用的 worktree 副本**，分支 `workbuddy/main-733f0f98` |
-| `…\Worktrees\…\desktop-pet\ashi\` | **你日常在跑的那份**（源码直跑，数据也在这）|
+| `E:\WorkBuddy\Git` | **git 仓库根**（分支 `main`）|
+| **`E:\WorkBuddy\Git\desktop-pet\ashi\`** | **唯一的开发目录 + 运行目录**。代码和数据都在这一处 |
 | `E:\WorkBuddy\Git\desktop-pet\.workbuddy\memory\` | 我的工作记忆（按天一个 md）|
+| `E:\WorkBuddy\阿拾-工作记忆备份\` | 工作记忆的**仓库外**备份（`.workbuddy/` 被 gitignore，怕被误删）|
 
-**开发流程（这两轮一直这么做）**：在**副本 worktree** 里改 → 提交 →
-回 E: `git merge --ff-only workbuddy/main-733f0f98` → `git push jarvis main`。
-这样 E: 那份源码始终干净，不会被开发中的半成品污染。
+### 为什么不再用 worktree 副本
 
-**启动**：双击 `E:\桌面\打开阿拾.vbs`（指副本的 `main.py`，改完立刻生效，
+以前在 `C:\Users\46001\WorkBuddy\Worktrees\…` 另开一个 worktree 改代码，
+好处是"不污染 E: 源码"，但代价很大：
+
+- **数据不跟着副本走** —— `config.json` / `memory` / `activity` / `shots`
+  都被 `.gitignore` 排除，新建 worktree 时**一个都不会带过去**，
+  每次开新副本都得手工搬一遍
+- 切分支（比如游戏模式）时同理，数据留在原地不动
+- 数据因此散落在 C 盘，而 git 本身就已经是保险了（改错能 diff / 能回退）
+
+**2026-09-13 已把 C 盘 worktree 删掉**（`git worktree remove` + 分支已删），
+数据全部搬进 `E:\WorkBuddy\Git\desktop-pet\ashi\`。
+**以后所有改动直接在这个目录里做，改完直接 commit + push，不再开副本。**
+
+> 目录 `C:\Users\46001\WorkBuddy\Worktrees\desktop-pet\main-733f0f98` 可能还剩一个
+> **空壳**（被当前会话占用删不掉，0 字节），重启后消失，不用管。
+
+**开发流程（现在的做法）**：
+在 `E:\WorkBuddy\Git\desktop-pet\ashi\` 直接改 → `git add` → `git commit`
+→ `git push jarvis main`。就三步，没有合并环节。
+
+**启动**：双击 `E:\桌面\打开阿拾.vbs`（指 E: 的 `main.py`，改完立刻生效，
 不用打包）；关闭用 `关闭阿拾.vbs`（会先发 `--quit` 优雅退出）。
+两个脚本都是**纯 ASCII**（wscript 按 GBK 读 .vbs，中文注释会破坏解析）。
 
 > ⚠️ 我启动的进程会被沙箱回收（活不过 1 分钟），**必须你双击**。
 > 我只能"起监测等你启动"。
@@ -49,11 +68,23 @@ Windows 桌面 AI 桌宠，PySide6 写的。它会**看你屏幕**，用朋友�
 
 | 项 | 值 |
 |---|---|
-| `main` | `fda6253`（副本 worktree 同一 commit，已同步）|
+| `main` | `fda6253`（本次修复后待提交新 commit）|
 | 冻结分支 | `feature/game-mode` = `4dbc235`（**游戏模式，未合入**）|
-| 已发布 | **v1.0.5 = 最新**（44MB exe / 43MB zip），见 <https://github.com/canshuang1221/ashi-desktop-pet/releases/latest> |
+| 已发布 | **v1.0.6 = 最新**（见 <https://github.com/canshuang1221/ashi-desktop-pet/releases/latest>）|
 | 更早的 | v1.0.0、v1.1.0（v1.1.0 是游戏模式版，用户认为未完善）|
-| 仓库 | **公开** |
+| 仓库 | 公开 |
+
+### v1.0.6 里有什么（2026-09-13 这天的改动）
+
+**模型下拉**：设置页「模型」「视觉模型」下拉框之前点开没有下拉三角（QSS 只留了
+`drop-down` 宽度没定义 `down-arrow`，Qt 可编辑模式下不画箭头）。现在给两个下拉框
+都补上了 SVG 箭头（存 `assets/dropdown_arrow.png`/`_hover.png`，默认灰色、悬停变蓝），
+且运行时用 `_asset_path()` 从 `ASSETS_DIRS` 解析（打包成 exe 后能正确回退到
+`sys._MEIPASS` 里的素材，不会因路径错位而画不出箭头）。
+
+**感知/搭话默认开启**：`config.DEFAULT` 里「开启屏幕感知」`sense.enabled` 和「定时搭话」`tick.enabled`
+之前默认是 `false`，新用户头一次打开感知/搭话是关的。现改成默认 `true`，并同步重新生成
+`config.example.json`（模板跟着 DEFAULT 走）。
 
 ### v1.0.5 里有什么（2026-09-12 这天的改动）
 

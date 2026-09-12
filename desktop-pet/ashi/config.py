@@ -74,7 +74,7 @@ DEFAULT = {
         "skin": "pic_fox",
     },
     "sense": {
-        "enabled": False,
+        "enabled": True,
         "interval_sec": 30,
         "shot_scale": 0.85,      # 截图缩放：太小会让模型读错屏幕上的小字
         "shot_quality": 82,      # JPEG 质量
@@ -123,7 +123,7 @@ DEFAULT = {
         ),
     },
     "tick": {
-        "enabled": False,
+        "enabled": True,
         "interval_sec": 1200,
         "prompt": (
             "现在是 {time}。像在旁边陪了一天的朋友那样随口搭句话，不超过 25 字："

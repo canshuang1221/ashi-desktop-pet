@@ -4,6 +4,10 @@
 对外主要提供 app_qss()：一段全局样式表，设置面板与历史窗口直接 setStyleSheet 用。
 """
 
+
+import os
+import config
+
 # ---- 主色 ----
 BRAND = "#185FA5"        # 主蓝（原版就有，保留作品牌色）
 BRAND_DARK = "#0C447C"   # 主蓝按下态
@@ -25,8 +29,24 @@ TEXT_WEAK = "#B0B6BF"    # 更弱的提示
 RADIUS = 10              # 统一圆角
 
 
+
+def _asset_path(name):
+    """在素材目录列表里找第一个存在该文件的目录，返回正斜杠路径。
+
+    打包成 exe 后 BASE_DIR/assets（exe 旁）可能不存在，
+    需要回退到 sys._MEIPASS 里的打包素材，两个都试。
+    """
+    for d in config.ASSETS_DIRS:
+        p = os.path.join(d, name)
+        if os.path.exists(p):
+            return p.replace("\\", "/")
+    return os.path.join(config.ASSETS_DIRS[0], name).replace("\\", "/")
+
+
 def app_qss():
     """设置 / 历史等窗口的全局样式表。"""
+    _arrow = _asset_path("dropdown_arrow.png")
+    _arrow_hov = _asset_path("dropdown_arrow_hover.png")
     return """
     QDialog { background: %(BG)s; }
     QWidget { font-family: "Microsoft YaHei", "Segoe UI"; font-size: 13px; color: %(TEXT)s; }
@@ -43,7 +63,22 @@ def app_qss():
         border: 1px solid %(BRAND)s; background: %(BG)s;
     }
     QLineEdit:disabled, QComboBox:disabled { color: %(TEXT_WEAK)s; }
-    QComboBox::drop-down { border: none; width: 20px; }
+    QComboBox::drop-down {
+        border: none; width: 20px;
+        subcontrol-origin: padding;
+        subcontrol-position: center right;
+    }
+    QComboBox::down-arrow {
+        image: url("%(ARROW)s");
+        width: 12px; height: 12px;
+        margin-right: 2px;
+    }
+    QComboBox::down-arrow:on {
+        image: url("%(ARROW_HOV)s");
+    }
+    QComboBox::down-arrow:hover {
+        image: url("%(ARROW_HOV)s");
+    }
     QComboBox QAbstractItemView {
         background: %(BG)s; border: 1px solid %(BORDER)s; border-radius: 6px;
         selection-background-color: %(BRAND_SOFT)s; selection-color: %(TEXT)s;
@@ -108,7 +143,7 @@ def app_qss():
         background: #2E3440; color: #FFFFFF; border: none;
         border-radius: 6px; padding: 5px 8px;
     }
-    """ % dict(globals())
+    """ % dict(globals(), ARROW=_arrow, ARROW_HOV=_arrow_hov)
 
 
 def chat_qss(font_pt=12):
