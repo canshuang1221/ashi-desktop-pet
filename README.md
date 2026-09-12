@@ -12,7 +12,7 @@
 
 ## 下载
 
-👉 **[最新版本 Releases](https://github.com/canshuang1221/jarvis-lite/releases/latest)**
+👉 **[最新版本 Releases](https://github.com/canshuang1221/ashi-desktop-pet/releases/latest)**
 
 解压后双击 `JarvisLite.exe` 即可。**第一次用要填一个「能看图」的模型**（右键托盘图标 → 设置 → API）—— 见下一节。
 

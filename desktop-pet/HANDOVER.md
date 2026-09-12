@@ -8,7 +8,7 @@
 
 Windows 桌面 AI 桌宠「阿拾」，PySide6 写的。它会看屏幕、用朋友口吻陪你吐槽，
 **不是**那种问你"要不要休息"的助手。代码托管在 GitHub 私有仓库
-`canshuang1221/jarvis-lite`。
+`canshuang1221/ashi-desktop-pet`。
 
 ---
 
@@ -79,7 +79,7 @@ Windows 桌面 AI 桌宠「阿拾」，PySide6 写的。它会看屏幕、用朋
 - **桌面在 `E:\桌面\`**（不是 `C:\Users\46001\Desktop`，那个是空壳）
 - **关阿拾**：任务管理器结束 `JarvisLite.exe`，或直接跟我说，我用命令关
 - **提交身份**：`canshuang1221` / `206538262+canshuang1221@users.noreply.github.com`
-- **`gh` 命令必须带 `-R canshuang1221/jarvis-lite`**
+- **`gh` 命令必须带 `-R canshuang1221/ashi-desktop-pet`**
   —— 默认 remote 指向另一个仓库，曾把 release 发错地方
 - 别擅自合并分支、别未经你验证就发布
 

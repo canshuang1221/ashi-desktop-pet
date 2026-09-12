@@ -12,7 +12,7 @@ A little creature that lives on your Windows desktop. It **watches your screen**
 
 ## Download
 
-👉 **[Latest Release](https://github.com/canshuang1221/jarvis-lite/releases/latest)**
+👉 **[Latest Release](https://github.com/canshuang1221/ashi-desktop-pet/releases/latest)**
 
 Unzip and double-click `JarvisLite.exe`. **On first run you need a model that can see images**
 (right-click the tray icon → Settings → API) — see the next section.
