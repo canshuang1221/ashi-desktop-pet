@@ -17,12 +17,12 @@ Windows 桌面 AI 桌宠「阿拾」，PySide6 写的。它会看屏幕、用朋
 | 路径 | 用途 |
 |---|---|
 | `E:\WorkBuddy\Git` | **git 仓库根** —— 在 WorkBuddy 里把工作目录设成这个 |
-| `E:\WorkBuddy\Git\desktop-pet\jarvis-lite\` | **源码在这**（7 个 py + `assets/` + `tools/`）|
-| `E:\WorkBuddy\Git\desktop-pet\jarvis-lite\dist\` | **运行目录**：exe + `config.json` + 日志 + `memory/` |
+| `E:\WorkBuddy\Git\desktop-pet\ashi\` | **源码在这**（7 个 py + `assets/` + `tools/`）|
+| `E:\WorkBuddy\Git\desktop-pet\ashi\dist\` | **运行目录**：exe + `config.json` + 日志 + `memory/` |
 | `E:\WorkBuddy\Git\desktop-pet\.workbuddy\memory\` | 我的工作记忆（按天一个 md）|
 
-**启动方式**：双击 `E:\WorkBuddy\Git\desktop-pet\jarvis-lite\start-jarvis.vbs`
-（它先 taskkill 旧进程，再启动 `dist\JarvisLite.exe`）
+**启动方式**：双击 `E:\WorkBuddy\Git\desktop-pet\ashi\start-ashi.vbs`
+（它先 taskkill 旧进程，再启动 `dist\ashi.exe`）
 
 > ⚠️ **我启动的进程会被沙箱回收**（活不过 1 分钟，试过三种方式都不行），
 > 所以**必须你双击**。我只能"起监测等你启动"。
@@ -35,7 +35,7 @@ Windows 桌面 AI 桌宠「阿拾」，PySide6 写的。它会看屏幕、用朋
 |---|---|
 | 当前分支 | `main` = `d212669` |
 | 冻结分支 | `feature/game-mode` = `4dbc235`（游戏模式，未合入 main）|
-| 当前 exe | `dist\JarvisLite.exe`，**19:03 打包**，68.3MB，含 12 张立绘 |
+| 当前 exe | `dist\ashi.exe`，**19:03 打包**，68.3MB，含 12 张立绘 |
 | 远程发布 | `v1.0.0`（稳定）、`v1.1.0`（含游戏模式）|
 
 ### `main` 分支包含
@@ -77,7 +77,7 @@ Windows 桌面 AI 桌宠「阿拾」，PySide6 写的。它会看屏幕、用朋
 
 - **出图花钱的活，先问再做**（你对"花了钱还用同一套模板"很敏感）
 - **桌面在 `E:\桌面\`**（不是 `C:\Users\46001\Desktop`，那个是空壳）
-- **关阿拾**：任务管理器结束 `JarvisLite.exe`，或直接跟我说，我用命令关
+- **关阿拾**：任务管理器结束 `ashi.exe`，或直接跟我说，我用命令关
 - **提交身份**：`canshuang1221` / `206538262+canshuang1221@users.noreply.github.com`
 - **`gh` 命令必须带 `-R canshuang1221/ashi-desktop-pet`**
   —— 默认 remote 指向另一个仓库，曾把 release 发错地方
@@ -90,9 +90,9 @@ Windows 桌面 AI 桌宠「阿拾」，PySide6 写的。它会看屏幕、用朋
 ### 打包（**必须先关阿拾**，否则文件被占用）
 
 ```bash
-cd E:/WorkBuddy/Git/desktop-pet/jarvis-lite
+cd E:/WorkBuddy/Git/desktop-pet/ashi
 "C:/Users/46001/.workbuddy/binaries/python/envs/default/Scripts/python.exe" \
-  -m PyInstaller --noconfirm --onefile --windowed --name JarvisLite \
+  -m PyInstaller --noconfirm --onefile --windowed --name ashi \
   --collect-all certifi --add-data "assets;assets" \
   --exclude-module PyQt5 --exclude-module tkinter --exclude-module matplotlib main.py
 ```

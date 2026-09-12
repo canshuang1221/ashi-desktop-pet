@@ -5,7 +5,7 @@
 不一致的后果很隐蔽：模板停在几天前的样子，新用户照着配就少了一堆新提示词规则
 （踩过：模板里没有 user_name、也没有后来加的「读画面文字」「别提光标」那几条）。
 
-用法（在 jarvis-lite 目录下）：
+用法（在 ashi 目录下）：
     python tools/gen_example_config.py
 """
 import json

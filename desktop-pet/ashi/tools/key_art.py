@@ -13,7 +13,7 @@ import os
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
-ROOT = r"E:\WorkBuddy\Git\desktop-pet\jarvis-lite"
+ROOT = r"E:\WorkBuddy\Git\desktop-pet\ashi"
 SRC = os.path.join(ROOT, "assets", "_source")
 OUT = os.path.join(ROOT, "assets")
 CANVAS = (600, 720)

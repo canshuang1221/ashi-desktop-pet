@@ -10,7 +10,7 @@ import os
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
-SRC = r"E:\WorkBuddy\Git\desktop-pet\jarvis-lite\assets\_source\kolors_0910-174051_probe.png"
+SRC = r"E:\WorkBuddy\Git\desktop-pet\ashi\assets\_source\kolors_0910-174051_probe.png"
 OUT_DIR = os.path.dirname(SRC)
 TMP = r"C:\Users\46001\AppData\Local\Temp"
 

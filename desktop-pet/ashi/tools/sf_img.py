@@ -16,7 +16,7 @@ import requests
 KEY = open(r"E:\WorkBuddy\Git\desktop-pet\.workbuddy\siliconflow.key",
            encoding="utf-8").read().strip()
 BASE = "https://api.siliconflow.cn/v1"
-OUT = r"E:\WorkBuddy\Git\desktop-pet\jarvis-lite\assets\_source"
+OUT = r"E:\WorkBuddy\Git\desktop-pet\ashi\assets\_source"
 
 
 def gen(model, prompt, negative="", image_size="960x1280", seed=None,

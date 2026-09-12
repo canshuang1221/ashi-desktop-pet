@@ -14,7 +14,7 @@ A little creature that lives on your Windows desktop. It **watches your screen**
 
 👉 **[Latest Release](https://github.com/canshuang1221/ashi-desktop-pet/releases/latest)**
 
-Unzip and double-click `JarvisLite.exe`. **On first run you need a model that can see images**
+Unzip and double-click `ashi.exe`. **On first run you need a model that can see images**
 (right-click the tray icon → Settings → API) — see the next section.
 
 > Unzip somewhere **writable** — not `C:\Program Files`. It creates `config.json`, `memory\`, etc. next to the executable.
@@ -96,7 +96,7 @@ Set your game to **"Borderless"** or **"Windowed Fullscreen"** and it will float
 ## Project layout
 
 ```
-desktop-pet/jarvis-lite/
+desktop-pet/ashi/
 ├── main.py         Entry point: tray, timers, sensing schedule, reply filtering
 ├── pet.py          The pet and speech bubble: drawing, animation, docking
 ├── brain.py        Model API, conversation memory, long-term memory
@@ -114,14 +114,14 @@ desktop-pet/jarvis-lite/
 
 ```bash
 pip install PySide6 requests
-cd desktop-pet/jarvis-lite
+cd desktop-pet/ashi
 python main.py                 # run from source: edits take effect instantly (best while iterating)
 
 # package (uses the spec in the repo)
-pyinstaller --noconfirm JarvisLite.spec
+pyinstaller --noconfirm ashi.spec
 
 # equivalent, spelled out by hand
-pyinstaller --noconfirm --onefile --windowed --name JarvisLite \
+pyinstaller --noconfirm --onefile --windowed --name ashi \
   --collect-all certifi --add-data "assets;assets" \
   --exclude-module PyQt5 --exclude-module tkinter \
   --exclude-module matplotlib main.py

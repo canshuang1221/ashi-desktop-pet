@@ -133,7 +133,7 @@ class Pet(QWidget):
         self._anim.setEasingCurve(QEasingCurve.OutCubic)
         self._anim.valueChanged.connect(lambda v: self.move(v))
 
-        self.setWindowTitle("JarvisLite")
+        self.setWindowTitle("ashi")
         self.setWindowFlags(
             Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
         )

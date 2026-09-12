@@ -31,7 +31,7 @@ VK_M = 0x4D
 # （对方会跑 quit() → tray.hide() → 托盘图标干净反注册）。
 # 直接强杀的话 Qt 没机会反注册，通知区就会留下"僵尸图标"；攒几个之后外壳
 # 清理时会把活着那条的注册也一并弄失效 —— 表现就是托盘图标点不动。
-CTL_SOCKET = "JarvisLite-ctl"
+CTL_SOCKET = "ashi-ctl"
 
 # Explorer 重建任务栏（重启/崩溃恢复）时会广播这个消息。收到就必须重新注册
 # 托盘图标 —— QSystemTrayIcon 自己不会补，它内部还认为 visible=True。
@@ -404,7 +404,7 @@ class App:
         ERROR_ALREADY_EXISTS = 183
         k32 = ctypes.windll.kernel32
         k32.CreateMutexW.restype = wintypes.HANDLE
-        self._mutex = k32.CreateMutexW(None, True, "JarvisLite_SingleInstance")
+        self._mutex = k32.CreateMutexW(None, True, "ashi_SingleInstance")
         return k32.GetLastError() == ERROR_ALREADY_EXISTS
 
     # ---------- 托盘 ----------

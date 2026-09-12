@@ -472,7 +472,7 @@ def grab_screen(scale=0.85, quality=82, as_jpeg=True, foreground=True):
     前台窗口不在主屏/取不到时自动退回全屏。
 
     注意 scale/quality 的取舍：实测 0.6 + quality 72 时，代码框里的小字会被
-    模型读错（jarvis-lite 读成 jarvís-lite、docking 读成 dorking）。
+    模型读错（ashi 读成 jarvís-lite、docking 读成 dorking）。
     现在默认 0.85 + 82，文字可读性明显变好，代价是截图体积约翻倍。
     可在设置面板里调。scope="screen" 时绕过前台窗口裁剪，截整个屏幕。
     """

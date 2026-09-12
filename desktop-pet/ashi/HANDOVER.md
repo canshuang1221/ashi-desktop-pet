@@ -1,6 +1,6 @@
 # 阿拾桌宠 · 交接文档
 
-生成时间：2026-09-10 ｜ 版本：**v2026.09.08.1540**（源码与 dist/JarvisLite.exe 一致）
+生成时间：2026-09-10 ｜ 版本：**v2026.09.08.1540**（源码与 dist/ashi.exe 一致）
 
 ---
 
@@ -8,8 +8,8 @@
 
 Windows 桌面 AI 桌宠。常驻屏幕右下角（可拖动、贴边半隐藏），会主动看屏幕搭话、点气泡可以接着聊、有历史记录与设置面板。
 
-- 源码目录：`jarvis-lite/`（7 个 .py）
-- 可执行文件：`jarvis-lite/dist/JarvisLite.exe`（PyInstaller onefile，约 47MB）
+- 源码目录：`ashi/`（7 个 .py）
+- 可执行文件：`ashi/dist/ashi.exe`（PyInstaller onefile，约 47MB）
 - 运行态目录（exe 同级）：`config.json`（配置）、`memory/`（对话记忆）、`notes/`（笔记）、`log.txt`、`ui_log.txt`
 
 ---
@@ -75,17 +75,17 @@ Windows 桌面 AI 桌宠。常驻屏幕右下角（可拖动、贴边半隐藏�
 - Python 3.13（本机用 `C:\Users\Administrator\.workbuddy\binaries\python\envs\default`）
 - 依赖：`PySide6`、`requests`、`certifi`、`pyinstaller`
 
-### 打包命令（在 jarvis-lite 目录下）
+### 打包命令（在 ashi 目录下）
 ```
-pyinstaller --noconfirm --onefile --windowed --name JarvisLite ^
+pyinstaller --noconfirm --onefile --windowed --name ashi ^
   --collect-all certifi ^
   --exclude-module PyQt5 --exclude-module tkinter --exclude-module matplotlib main.py
 ```
-产出在 `dist/JarvisLite.exe`。
+产出在 `dist/ashi.exe`。
 
 ### 运行
-- 直接双击 `dist/JarvisLite.exe`（配置/记忆写在 exe 同级目录，换机即新数据）
-- 桌面启动脚本 `start-jarvis.vbs`：先 taskkill 旧实例，再 explorer 拉起 exe
+- 直接双击 `dist/ashi.exe`（配置/记忆写在 exe 同级目录，换机即新数据）
+- 桌面启动脚本 `start-ashi.vbs`：先 taskkill 旧实例，再 explorer 拉起 exe
 
 ### 配置（dist/config.json）
 - `api.base_url` / `api.api_key` / `api.model`：接口三件套（当前是 AMD Radeon 网关 + DeepSeek-V4-Flash-Vision-Exp）
@@ -104,7 +104,7 @@ pyinstaller --noconfirm --onefile --windowed --name JarvisLite ^
 ## 6. 包内文件清单
 
 ```
-jarvis-lite/
+ashi/
 ├─ HANDOVER.md          ← 本文档
 ├─ main.py              托盘/感知/窗口管理/热键（VERSION 在这）
 ├─ pet.py               桌宠本体（三形态绘制、拖动、贴边、气泡）
@@ -113,11 +113,11 @@ jarvis-lite/
 ├─ history.py           历史记录（微信式气泡）
 ├─ settings.py          设置面板
 ├─ config.py            配置默认值与读写
-├─ start-jarvis.vbs     桌面启动脚本副本
+├─ start-ashi.vbs     桌面启动脚本副本
 ├─ 阿拾 桌宠.vbs        桌面上那个启动脚本
 ├─ config.json          项目侧配置（与 dist 内一致）
 └─ dist/
-   ├─ JarvisLite.exe    ← 可直接运行的成品 v2026.09.08.1540
+   ├─ ashi.exe    ← 可直接运行的成品 v2026.09.08.1540
    ├─ config.json       运行配置（API Key 等）
    ├─ memory/           对话记忆（按天 json）
    └─ notes/            笔记

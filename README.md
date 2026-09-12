@@ -14,7 +14,7 @@
 
 👉 **[最新版本 Releases](https://github.com/canshuang1221/ashi-desktop-pet/releases/latest)**
 
-解压后双击 `JarvisLite.exe` 即可。**第一次用要填一个「能看图」的模型**（右键托盘图标 → 设置 → API）—— 见下一节。
+解压后双击 `ashi.exe` 即可。**第一次用要填一个「能看图」的模型**（右键托盘图标 → 设置 → API）—— 见下一节。
 
 > 注意：解压到一个**可写**的目录，别放 `C:\Program Files`。它会在自己所在的目录下建 `config.json`、`memory\` 等文件。
 
@@ -93,7 +93,7 @@ Model xxx does not support image input. Remove the image content or use a vision
 ## 代码结构
 
 ```
-desktop-pet/jarvis-lite/
+desktop-pet/ashi/
 ├── main.py        程序入口：托盘、定时器、感知调度、发言过滤
 ├── pet.py         桌宠本体与气泡的绘制、动画、停靠
 ├── brain.py       模型接口、对话记忆、长期记忆
@@ -111,14 +111,14 @@ desktop-pet/jarvis-lite/
 
 ```bash
 pip install PySide6 requests
-cd desktop-pet/jarvis-lite
+cd desktop-pet/ashi
 python main.py                 # 直接跑源码：改完立刻生效，调试期推荐
 
 # 打包（用仓库里的 spec）
-pyinstaller --noconfirm JarvisLite.spec
+pyinstaller --noconfirm ashi.spec
 
 # 等价的手写参数版
-pyinstaller --noconfirm --onefile --windowed --name JarvisLite \
+pyinstaller --noconfirm --onefile --windowed --name ashi \
   --collect-all certifi --add-data "assets;assets" \
   --exclude-module PyQt5 --exclude-module tkinter \
   --exclude-module matplotlib main.py
