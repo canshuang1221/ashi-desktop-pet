@@ -10,7 +10,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QBrush, QColor, QCursor, QFont, QFontMetrics, QLinearGradient,
-    QPainter, QPainterPath, QPen, QPixmap, QRadialGradient,
+    QImage, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient,
 )
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -19,16 +19,55 @@ LINE = "#185FA5"
 MASK = "#0C447C"
 EYE = "#5DCAA5"
 SPARK = "#EF9F27"
-DOCK_TH = 0    # 完全贴住屏幕边缘（0 = 刚好贴上）才停靠；负值需略微超出
-# 小球绘制在 W×H 画布中间：身体横向从 BODY_L 到 BODY_R，两侧是透明边距。
-# 停靠露出的宽度必须大于透明边距，否则露出来的是一片空白，看着像「桌宠消失了」。
+# ---------- 贴边判定：按「可见立绘」算，且要**过半**才藏 ----------
+# 窗口比人物大一大圈：立绘 PNG 是 600x720，人物只占里面一块，画到窗口里之后
+# 四周还是透明留白。实测（pic_fox、窗口 150x180、scale=1.0）：
+#     人物不透明区落在窗口内  x ∈ [34, 115]、y ∈ [20, 142]
+#     → 左右各约 34px 透明留白、上边 20px、下边 38px
+#
+# 规则（用户定的）：**拖到人物过半出屏，才由程序缩起来藏好；没过半就不干预，
+# 它爱停在哪儿就停在哪儿** —— 算用户自己放的。
+# 判定用「人物中心」越过屏幕边界，等价于"人物一半在外"，且天然避开
+# QRect.right()/bottom() 那个 -1 的坑。
+#
+# 为什么必须按人物算、不能按窗口算：人物纵向不居中（中心 y≈81 vs 窗口 90），
+# 按窗口算会变成"上边要藏 57%、下边只藏 43% 就触发"，上下差约 9px。
+# 横向两者等价（人物水平居中，中心 75.35 vs 75），所以左右感觉不出差别。
+#
+# 历史：原来是 0（窗口一贴边就藏，人物离边还有 34px 就没了）→ 试过 -18、-2
+# （都在"按窗口算"里打转，肉眼几乎没差别）→ 最终改成按人物中心过半。
 BODY_L, BODY_R = 31, 119
-PEEK = 20      # 停靠时额外露出多少「身体」
+PEEK = 20      # 停靠后露出的「人物」宽度（可见像素，不是窗口像素）
+# 矢量画法（立绘素材缺失时的兜底）的可见范围，同样是窗口内坐标：
+# 头是 cy-15、半径 32 的圆（顶 ≈45），身体+脚到 cy+58 ≈150。
+ART_VEC_TOP, ART_VEC_BOT = 45, 150
+# 双角同时过半时的优先级（越界像素相同时按这个顺序取）
+EDGE_ORDER = ("left", "right", "top", "bottom")
 
 
-def edge_visible(scale=1.0):
-    """停靠时应露出的宽度：透明边距 + 一点身体，随缩放变化。"""
-    return max(34, int((Pet.W - BODY_R + PEEK) * scale))
+def art_box_from_pixmap(pm, step=4):
+    """立绘里**不透明像素**的包围盒（原图像素坐标，右下为开区间）。
+
+    PNG 四周自带一大圈透明留白，贴边判定必须用人物本身的轮廓。隔 step 个
+    像素采一次样就够（判定精度远小于 1px），比逐像素快十几倍。
+    """
+    img = pm.toImage().convertToFormat(QImage.Format_ARGB32)
+    W, H = img.width(), img.height()
+    minx, miny, maxx, maxy = W, H, -1, -1
+    for y in range(0, H, step):
+        for x in range(0, W, step):
+            if (img.pixel(x, y) >> 24) & 0xFF > 8:
+                if x < minx:
+                    minx = x
+                if x > maxx:
+                    maxx = x
+                if y < miny:
+                    miny = y
+                if y > maxy:
+                    maxy = y
+    if maxx < 0:
+        return None
+    return minx, miny, maxx + step, maxy + step
 
 
 def force_topmost(win, on=True):
@@ -86,7 +125,8 @@ class Pet(QWidget):
         # 主动置顶由 _top_timer 驱动（见 __init__ 末尾），不写在 paintEvent 里
         self._s = float(cfg["pet"].get("scale", 1.0))
         self._skin = cfg["pet"].get("skin", "pic_fox")
-        self._dock_side = None    # None / "left" / "right" / "top"
+        self._art_box = None      # 可见立绘的包围盒（懒算 + 缓存，见 art_box()）
+        self._dock_side = None    # None / "left" / "right" / "top" / "bottom"
         self._home = None         # 未停靠时的完整位置
         self._anim = QVariantAnimation(self)
         self._anim.setDuration(180)
@@ -154,26 +194,74 @@ class Pet(QWidget):
     def _restore_pos(self):
         scr = QApplication.primaryScreen().availableGeometry()
         x, y = self.cfg["pet"]["x"], self.cfg["pet"]["y"]
-        if x < 0 or y < 0:
+        # ⚠️ 不能再用「x<0 或 y<0」当"没存过"的标记：新规则下"往左/上只放了
+        # 不到一半"本来就是负坐标（左要到 -75 才过半），那样会被误判成首次启动、
+        # 被丢回右下角。只有出厂的哨兵值 (-1,-1) 才算没存过。
+        if x == -1 and y == -1:
             x = scr.right() - self.width() - 40
             y = scr.bottom() - self.height() - 60
         self._home = QPoint(int(x), int(y))
         self.move(self._home)
-        side = self._edge_check(self._home)
+        # 上次退出时是「过半藏起来」的 → 恢复成停靠态；_home 先夹成完整可见，
+        # 这样鼠标靠上来能正常滑出来。只放了不到一半的，原样恢复、不干预。
+        side = self._crossed_half(self._home)
         if side:
+            self._home = self._clamp_home(self._home)
             self._dock_side = side
             self.move(self._dock_target(side))
 
-    def _edge_check(self, pos):
-        """松手位置贴近哪条屏幕边（可用区域内）。"""
+    def art_box(self):
+        """可见立绘在窗口坐标下的包围盒（未缩放坐标），懒算 + 缓存。
+
+        贴边判定、展开位置夹取都必须按**人物轮廓**算 —— 按窗口算就会
+        "明明离边还挺远就藏起来了"。坐标复刻 _draw_image 的定位：
+        按 idle 帧等比缩放进 118x134、水平居中、底边落在 y=146。
+        """
+        if self._art_box is not None:
+            return self._art_box
+        box = None
+        frames = self._frames(self._skin) if self._skin in self.IMAGE_SKINS else {}
+        ref = frames.get("idle") or (next(iter(frames.values())) if frames else None)
+        if ref is not None and ref.width() and ref.height():
+            bb = art_box_from_pixmap(ref)
+            if bb:
+                k = min(134.0 / ref.height(), 118.0 / ref.width())
+                dw, dh = ref.width() * k, ref.height() * k
+                ox, oy = (self.W - dw) / 2.0, 146.0 - dh
+                box = QRectF(ox + bb[0] * k, oy + bb[1] * k,
+                             (bb[2] - bb[0]) * k, (bb[3] - bb[1]) * k)
+        if box is None:
+            box = QRectF(BODY_L, ART_VEC_TOP, BODY_R - BODY_L,
+                         ART_VEC_BOT - ART_VEC_TOP)
+        self._art_box = box
+        return box
+
+    def _crossed_half(self, pos):
+        """人物是否已经**过半**出屏：是返回那一侧，否则 None。
+
+        拿「人物中心」跟屏幕边界比 —— 中心越界就等价于"人物一半在外"，
+        也顺便绕开了 QRect.right()/bottom() 那个 -1 的坑。
+        **没过半一律返回 None**，调用方不许做任何干预（用户原话：
+        "没过半算用户自己隐藏的"）。
+
+        双角同时过半时取**越界像素最多**的那一边；相同时按 EDGE_ORDER。
+        另一条轴由 _clamp_home 夹回完整可见，所以怎么拖都不会丢。
+        """
         scr = QApplication.primaryScreen().availableGeometry()
-        if pos.x() + self.width() >= scr.right() - DOCK_TH:
-            return "right"
-        if pos.x() <= scr.left() + DOCK_TH:
-            return "left"
-        if pos.y() <= scr.top() + DOCK_TH:
-            return "top"
-        return None
+        a = self.art_box()
+        s = self._s
+        cx = pos.x() + (a.left() + a.right()) / 2.0 * s
+        cy = pos.y() + (a.top() + a.bottom()) / 2.0 * s
+        over = {
+            "left": scr.left() - cx,
+            "right": cx - (scr.right() + 1),
+            "top": scr.top() - cy,
+            "bottom": cy - (scr.bottom() + 1),
+        }
+        hit = [side for side in EDGE_ORDER if over[side] > 0]
+        if not hit:
+            return None
+        return max(hit, key=lambda side: (over[side], -EDGE_ORDER.index(side)))
 
     def reset_pos(self):
         """回到右下角完整可见位置并取消停靠——靠边藏起来找不到时用。"""
@@ -188,13 +276,22 @@ class Pet(QWidget):
         self.save_pos()
 
     def _dock_target(self, side):
+        """停靠到位的位置：只留 PEEK 像素的**人物**露在屏幕边内侧。"""
         scr = QApplication.primaryScreen().availableGeometry()
-        e = edge_visible(self._s)
+        a = self.art_box()
+        s = self._s
+        keep = PEEK * s
         if side == "left":
-            return QPoint(scr.left() - self.width() + e, self._home.y())
+            # 人物右缘落在屏幕左边内侧 keep 处 → 只有最左边 keep 宽露着
+            return QPoint(int(scr.left() + keep - a.right() * s), self._home.y())
         if side == "right":
-            return QPoint(scr.right() - e, self._home.y())
-        return QPoint(self._home.x(), scr.top() - self.height() + e)
+            # 人物左缘落在屏幕右边内侧 keep 处
+            return QPoint(int(scr.right() + 1 - keep - a.left() * s), self._home.y())
+        if side == "top":
+            # 人物下缘（脚）落在屏幕顶边内侧 keep 处
+            return QPoint(self._home.x(), int(scr.top() + keep - a.bottom() * s))
+        # bottom：头顶落在屏幕底边内侧 keep 处 —— 只露头发尖
+        return QPoint(self._home.x(), int(scr.bottom() + 1 - keep - a.top() * s))
 
     def _slide(self, target):
         self._anim.stop()
@@ -235,16 +332,61 @@ class Pet(QWidget):
     def mouseReleaseEvent(self, e):
         if self.drag:
             self.drag = None
-            self._home = self.pos()
-            side = self._edge_check(self.pos())
+            side = self._crossed_half(self.pos())
             self._dock_side = side
             if side:
+                # 过半了 → 缩起来藏好。_home 记「鼠标靠上来时弹回的落点」，
+                # 也就是**人物完整可见的贴边位**；顺带把另一条轴夹回可见区
+                # （拖到角上时两边同时过半的保险，保证不会丢）。
+                self._home = self._clamp_home(self.pos())
                 self._slide(self._dock_target(side))
+            else:
+                # 没过半 → 用户自己放的位置，原样记住，**绝不夹取**
+                # （夹一下就会变成"我记得放这儿了，它却弹回去了"）。
+                self._home = QPoint(self.pos())
             # 关键修复：之前只在「不靠边」分支才 save_pos，导致用户拖到屏幕边缘
             # 停靠后配置里的 x/y 永远是上次的旧值，下次重启瞬移回老位置，体验诡异。
             # 现在无脑保存当前位置——下次启动就在用户最后停下的地方。
             self.save_pos()
             self.on_action("save", None)
+
+    def _clamp_home(self, pos):
+        """把位置夹到「人物完整可见」的范围里 —— **只在停靠时用**。
+
+        两个用途：
+        1) 停靠后 mousePressEvent / enterEvent 会 `move(self._home)` 把人物滑回来，
+           那个落点必须是完整可见的（否则"回来了一点、但没完全露出来"）。
+        2) 拖到角上时两边同时过半，只缩一边；另一条轴靠这里夹回可见区，保证不丢。
+
+        ⚠️ **不要拿它去处理"没过半"的松手位置** —— 那样用户"自己放一半在外"
+        的意图会被抹掉（这个坑今天踩过一次）。
+        窗口本身允许盖到屏幕外（四周是透明留白），所以夹取边界不是屏幕内沿，
+        而是"人物刚好压线"那一档 —— 用户要的「最贴边」就是这个位置。
+        """
+        scr = QApplication.primaryScreen().availableGeometry()
+        a = self.art_box()
+        s = self._s
+        x = min(max(pos.x(), scr.left() - a.left() * s),
+                scr.right() + 1 - a.right() * s)
+        y = min(max(pos.y(), scr.top() - a.top() * s),
+                scr.bottom() + 1 - a.bottom() * s)
+        return QPoint(int(x), int(y))
+
+    # 头部大致落在窗口的这个高度（按 W/H = 150/180 量出来的）：
+    # 矢量画法头顶≈45、耳尖≈19；立绘绘制区顶≈12、脸中 60~90。
+    # 46 两种形象都落在头部，横向居中也不会踩到左右各约 16px 的透明留白。
+    HEAD_DY = 46
+
+    def head_anchor(self):
+        """气泡箭头该指向的那一点 —— 头顶。
+
+        以前 `_tail_path` 瞄的是 `frameGeometry().center()`，但窗口四周有透明留白，
+        那个点落在**身体中段（≈胸口）**，所以箭头看着像悬在空处、没指着她。
+        """
+        p = self.frameGeometry().topLeft()
+        s = self._s
+        return QPoint(int(p.x() + self.W * 0.5 * s),
+                      int(p.y() + self.HEAD_DY * s))
 
     def mouseDoubleClickEvent(self, e):
         self.on_action("toggle_sense", None)
@@ -280,6 +422,8 @@ class Pet(QWidget):
             near_edge = m.x() <= scr.left() + 10
         elif self._dock_side == "top":
             near_edge = m.y() <= scr.top() + 10
+        elif self._dock_side == "bottom":
+            near_edge = m.y() >= scr.bottom() - 10
         if near_edge:
             return  # 鼠标停在缝隙上：保持展开，别横跳
         r = self.frameGeometry().adjusted(-8, -8, 8, 8)  # 交互范围外扩 8px
@@ -376,6 +520,7 @@ class Pet(QWidget):
         """
         if (skin in self.SKINS or skin in self.IMAGE_SKINS) and skin != self._skin:
             self._skin = skin
+            self._art_box = None      # 换形象 → 人物轮廓要重算
             self.__class__._img_cache.clear()
             self.update()
 
@@ -1078,7 +1223,9 @@ class Bubble(QWidget):
         if pet is None or not pet.isVisible():
             tx, ty = cx, H + 30                      # 没桌宠可指：默认朝下
         else:
-            pc = pet.frameGeometry().center()
+            # 瞄头顶而不是窗口中心 —— 窗口四周有透明留白，中心落在胸口上，
+            # 箭头就会看着像悬在空处。
+            pc = pet.head_anchor()
             tx = pc.x() - self.x() - m               # 换算到本体局部坐标
             ty = pc.y() - self.y() - m
         dx, dy = tx - cx, ty - cy

@@ -60,6 +60,9 @@ notes/
 
 # ===== 打包中间产物 =====
 *.spec
+# 但项目自己的那份 spec 要跟着仓库走：README 里就是让用户直接
+# `pyinstaller --noconfirm JarvisLite.spec`，没它这条命令跑不起来。
+!desktop-pet/jarvis-lite/JarvisLite.spec
 
 # ===== 立绘原始素材（带背景的大图，成品见 assets/*.png）=====
 # 注意：带斜杠的规则只锚定仓库根目录，这里必须用 **/ 才能匹配子目录

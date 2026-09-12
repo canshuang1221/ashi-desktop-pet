@@ -209,6 +209,50 @@ def archive_recent(days=7):
                        for c in chunks[-days:])
 
 
+def _archive_chunks():
+    """把档案按「## 日期」切成 (日期, 段落正文) 列表。"""
+    if not os.path.exists(ARCHIVE):
+        return []
+    try:
+        with open(ARCHIVE, encoding="utf-8") as f:
+            text = f.read()
+    except Exception:
+        return []
+    out = []
+    for chunk in text.split("\n## "):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        if chunk.startswith("## "):
+            chunk = chunk[3:].strip()
+        out.append(chunk)
+    return out
+
+
+def dates():
+    """档案里出现过的日期（升序）。给长期记忆的每日沉淀用。"""
+    days = []
+    for chunk in _archive_chunks():
+        head = chunk.splitlines()[0].strip() if chunk else ""
+        if (len(head) == 10 and head[4] == "-" and head[7] == "-"
+                and head[:4].isdigit() and head[5:7].isdigit() and head[8:].isdigit()):
+            days.append(head)
+    return sorted(set(days))
+
+
+def sections_for(days):
+    """指定日期的足迹段落。给长期记忆的每日沉淀用。"""
+    want = set(days or [])
+    if not want:
+        return ""
+    out = []
+    for chunk in _archive_chunks():
+        head = chunk.splitlines()[0].strip() if chunk else ""
+        if head in want:
+            out.append("## " + chunk)
+    return "\n\n".join(out)
+
+
 def block():
     """拼进 system 提示用的片段。"""
     s = today_summary()

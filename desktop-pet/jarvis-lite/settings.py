@@ -254,6 +254,15 @@ class Settings(QDialog):
         self.pet_name.setText(self.cfg["pet"].get("name", "阿拾"))
         self.pet_name.setPlaceholderText("给它起个名字")
 
+        # 它怎么称呼「你」（不是它自己的名字）。提示词里用 {user} 引用，
+        # 所以改完这里，所有人格/提示词里的称呼自动跟着变。
+        # 标签写成「它怎么称呼你」是为了跟上面「名字」区分开 —— 用户看过
+        # 「名字叫{name}」那句提示词，容易以为这栏也是改它的名字。
+        self.user_name = QLineEdit()
+        self.user_name.setMaxLength(8)
+        self.user_name.setText(self.cfg["pet"].get("user_name", "宝宝"))
+        self.user_name.setPlaceholderText("它怎么称呼你，比如「宝宝」")
+
         self.scale = QSlider(Qt.Horizontal)
         self.scale.setRange(50, 220)
         self.scale.setValue(int(self.cfg["pet"].get("scale", 1.0) * 100))
@@ -311,6 +320,7 @@ class Settings(QDialog):
         self._ms_live(self.bub_ms.value())
 
         f.addRow("名字", self.pet_name)
+        f.addRow("它怎么称呼你", self.user_name)
         f.addRow("形象", self.skin)
         f.addRow("桌宠缩放", self.srow)
         f.addRow("字号", self.frow)
@@ -537,6 +547,8 @@ class Settings(QDialog):
         self.cfg["sense"]["interval_sec"] = self.interval.value()
         self.cfg["sense"]["shot_scope"] = self.shot_scope.currentData() or "window"
         self.cfg["pet"]["name"] = (self.pet_name.text().strip() or "阿拾")
+        # 留空就回退到默认称呼（不能存空串：persona 里「叫{user}」会读成空）
+        self.cfg["pet"]["user_name"] = (self.user_name.text().strip() or "宝宝")
         self.cfg["sense"]["shot_scale"] = self.shot_scale.value() / 100.0
         self.cfg["sense"]["shot_quality"] = self.shot_quality.value()
         self.cfg["sense"]["keep_shots"] = self.keep_shots.value()

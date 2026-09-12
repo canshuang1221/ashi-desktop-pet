@@ -35,27 +35,6 @@ class StreamWorker(QThread):
             self.delta.emit(chunk)
 
 
-class MemoWorker(QThread):
-    """聊完一轮后，异步提炼「关于用户的长期记忆」。
-
-    单独开线程避免拖慢界面；失败静默（记忆是加分项，不该影响聊天）。
-    """
-
-    def __init__(self, brain, user_text, reply):
-        super().__init__()
-        self.brain, self.user_text, self.reply = brain, user_text, reply
-
-    def run(self):
-        try:
-            n = self.brain.learn_about_user(self.user_text, self.reply)
-            if n:
-                with open(os.path.join(config.BASE_DIR, "log.txt"), "a",
-                          encoding="utf-8") as f:
-                    f.write("[memo] 新记住 %d 条关于用户的事\n" % n)
-        except Exception:
-            pass
-
-
 class ChatWindow(QWidget):
     """桌宠旁的对话面板。"""
 
@@ -65,11 +44,9 @@ class ChatWindow(QWidget):
         self.msgs = []          # [(who, text, is_notice)]，微信式气泡按序渲染
         self._pt = 12
         self.worker = None
-        self._memo = None       # 提炼长期记忆的后台线程
         self.note_worker = None
-        # 线程的生命周期管理，见 _retire() 的说明——这两个列表是防崩溃的关键。
+        # 线程的生命周期管理，见 _retire() 的说明——这个列表是防崩溃的关键。
         self._retired = []      # 已结束、但还不能放手的线程
-        self._memos = []        # 所有在跑的提炼线程（绝不能覆盖式赋值）
         self.drag = None
 
         self.setWindowTitle(cfg["pet"]["name"])
@@ -342,22 +319,8 @@ class ChatWindow(QWidget):
 
     def _on_done(self):
         plain = self.msgs[-1][1].strip() if self.msgs else ""
-        last_user = ""
-        for who, t, _n in reversed(self.msgs[:-1]):
-            if who == "你":
-                last_user = t
-                break
         self._finish()
         self.bubble.say(self.pet, plain[:60] + ("…" if len(plain) > 60 else ""), 8000)
-        if last_user and plain:
-            # 聊完一轮 → 丢到后台去提炼长期记忆，别卡界面。
-            # 用列表收集，不要覆盖式赋值 self._memo：上一轮那个可能还在跑
-            # （提炼要调一次接口，几十秒），覆盖会让它被 Python 回收，
-            # 而它持有的 QThread 还在运行 → 崩溃。
-            w = MemoWorker(self.brain, last_user, plain)
-            self._memos.append(w)
-            w.finished.connect(lambda: self._retire(w))
-            w.start()
 
     def _retire(self, th):
         """线程用完后先留着引用，过几秒再放手。
@@ -369,10 +332,6 @@ class ChatWindow(QWidget):
         """
         if th is None:
             return
-        try:
-            self._memos.remove(th)     # 可能来自提炼线程
-        except ValueError:
-            pass
         self._retired.append(th)
         QTimer.singleShot(3000, lambda: self._drop_retired(th))
 
@@ -384,7 +343,7 @@ class ChatWindow(QWidget):
 
     def shutdown(self):
         """退出前等后台线程收尾，避免线程访问已经销毁的对象。"""
-        for th in list(self._memos) + list(self._retired):
+        for th in list(self._retired):
             try:
                 if th.isRunning():
                     th.wait(2000)

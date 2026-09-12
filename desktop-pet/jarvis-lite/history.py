@@ -159,8 +159,9 @@ class Memo(QDialog):
         root = QVBoxLayout(self)
 
         tip = QLabel(
-            "这里是它从你们的聊天里慢慢攒下来的、关于你的事实。"
-            "每次说话都会带上这些，所以它越用越懂你。\n"
+            "这里是它攒下来的、关于你的事实。每天第一次打开时，它会翻一遍"
+            "前一天的聊天和「今天干了什么」，把值得长期记住的合并进来。\n"
+            "这些会一直带在对话里，所以它越用越懂你。"
             "可以直接在这里改，改完点「保存」。")
         tip.setWordWrap(True)
         tip.setStyleSheet("color:%s;font-size:11px;" % theme.TEXT_SUB)
