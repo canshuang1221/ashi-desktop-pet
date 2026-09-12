@@ -77,3 +77,9 @@ notes/
 # ===== 运行时产生的活动足迹与截图（私密）=====
 **/activity/
 **/shots/
+
+# ===== 搬家/回滚留下的留底副本 =====
+# 2026-09-13 踩过：把 config.json 改名成 config.json.old-0913 留底，
+# 结果它匹配不上上面的 `config.json` 规则，git status 里冒成未跟踪文件，
+# 一旦 git add -A 就把 API Key 提交上去了。凡带 .old- 的留底一律排除。
+*.old-*
