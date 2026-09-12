@@ -1,7 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('assets', 'assets')]
+# 只打包成品立绘，**排除 assets/_source**（生图/抠图用的原始大图）。
+# 之前整目录打包，每版都白送约 25MB 的原始素材（exe 71.5MB → 现在 46MB）。
+def _asset_datas():
+    out = []
+    here = os.path.dirname(os.path.abspath(SPEC)) if 'SPEC' in dir() else os.getcwd()
+    base = os.path.join(here, 'assets')
+    for name in sorted(os.listdir(base)):
+        if name.startswith('.') or name == '_source':
+            continue
+        src = os.path.join(base, name)
+        if os.path.isfile(src):
+            out.append((src, 'assets'))
+    return out
+
+
+datas = _asset_datas()
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('certifi')
